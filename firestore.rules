@@ -1,0 +1,121 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-\\.]+$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.email is string && data.email.size() <= 200 &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('avatarUrl' in data) || (data.avatarUrl is string && data.avatarUrl.size() <= 1000)) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidUserPlaylist(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             (!('description' in data) || (data.description is string && data.description.size() <= 1000)) &&
+             (!('coverUrl' in data) || (data.coverUrl is string && data.coverUrl.size() <= 1000)) &&
+             (!('songCount' in data) || data.songCount is int) &&
+             (!('songsJson' in data) || (data.songsJson is string && data.songsJson.size() <= 500000)) &&
+             (!('isSpotifyImport' in data) || data.isSpotifyImport is bool) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidLikedSong(data) {
+      return data.id is string && data.id.size() <= 128 &&
+             data.userId is string && data.userId == request.auth.uid &&
+             data.songId is string && data.songId.size() <= 128 &&
+             data.title is string && data.title.size() > 0 && data.title.size() <= 200 &&
+             data.artist is string && data.artist.size() > 0 && data.artist.size() <= 200 &&
+             (!('album' in data) || (data.album is string && data.album.size() <= 200)) &&
+             (!('coverUrl' in data) || (data.coverUrl is string && data.coverUrl.size() <= 1000)) &&
+             (!('streamUrl' in data) || (data.streamUrl is string && data.streamUrl.size() <= 2000)) &&
+             (!('durationMs' in data) || data.durationMs is int) &&
+             (!('createdAt' in data) || (data.createdAt is timestamp && data.createdAt <= request.time));
+    }
+
+    function isValidUserSettings(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             (!('audioQuality' in data) || (data.audioQuality is string && data.audioQuality.size() <= 50)) &&
+             (!('stopOnTaskRemoved' in data) || data.stopOnTaskRemoved is bool) &&
+             (!('customThemePrompt' in data) || (data.customThemePrompt is string && data.customThemePrompt.size() <= 500)) &&
+             (!('primaryColorHex' in data) || (data.primaryColorHex is string && data.primaryColorHex.size() <= 16)) &&
+             (!('accentColorHex' in data) || (data.accentColorHex is string && data.accentColorHex.size() <= 16)) &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    match /users/{userId} {
+      allow get, list: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidId(userId) &&
+                       isValidUserProfile(request.resource.data);
+      allow update: if isOwner(userId) && isValidId(userId) &&
+                       request.resource.data.userId == resource.data.userId &&
+                       isValidUserProfile(request.resource.data);
+      allow delete: if isOwner(userId);
+
+      match /playlists/{playlistId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(playlistId) &&
+                         isValidUserPlaylist(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(playlistId) &&
+                         request.resource.data.userId == resource.data.userId &&
+                         isValidUserPlaylist(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /likedSongs/{likedSongId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(likedSongId) &&
+                         isValidLikedSong(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(likedSongId) &&
+                         request.resource.data.userId == resource.data.userId &&
+                         isValidLikedSong(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+
+      match /settings/{settingId} {
+        allow get, list: if isOwner(userId);
+        allow create: if isOwner(userId) && isValidId(settingId) &&
+                         isValidUserSettings(request.resource.data);
+        allow update: if isOwner(userId) && isValidId(settingId) &&
+                         request.resource.data.userId == resource.data.userId &&
+                         isValidUserSettings(request.resource.data);
+        allow delete: if isOwner(userId);
+      }
+    }
+
+    function isValidAppUpdate(data) {
+      return data.versionCode is int &&
+             data.versionName is string && data.versionName.size() <= 64 &&
+             data.downloadUrl is string && data.downloadUrl.size() <= 2000 &&
+             (!('changelog' in data) || (data.changelog is string && data.changelog.size() <= 4000)) &&
+             (!('isMandatory' in data) || data.isMandatory is bool) &&
+             (!('publishedAt' in data) || data.publishedAt is int);
+    }
+
+    // Over-the-air app updates (public read, validated write)
+    match /app_updates/{updateId} {
+      allow read: if true;
+      allow write: if isValidAppUpdate(request.resource.data);
+    }
+  }
+}

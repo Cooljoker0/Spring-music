@@ -1,0 +1,663 @@
+package com.example.updater
+
+import android.app.Activity
+import android.app.DownloadManager
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import android.os.Environment
+import android.provider.Settings
+import androidx.core.content.FileProvider
+import com.example.BuildConfig
+import com.google.firebase.firestore.FirebaseFirestore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import okhttp3.Cookie
+import okhttp3.CookieJar
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
+
+data class AppUpdateInfo(
+    val versionCode: Int = 1,
+    val versionName: String = "1.0",
+    val downloadUrl: String = "",
+    val changelog: String = "",
+    val isMandatory: Boolean = false,
+    val publishedAt: Long = System.currentTimeMillis()
+)
+
+/**
+ * In-memory CookieJar to maintain Google Drive, Dropbox, and CDN session cookies across redirects.
+ */
+private class InMemoryCookieJar : CookieJar {
+    private val cookieStore = ConcurrentHashMap<String, MutableList<Cookie>>()
+
+    override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) {
+        val host = url.host
+        val existing = cookieStore.getOrPut(host) { mutableListOf() }
+        synchronized(existing) {
+            existing.removeAll { old -> cookies.any { it.name == old.name } }
+            existing.addAll(cookies)
+        }
+    }
+
+    override fun loadForRequest(url: HttpUrl): List<Cookie> {
+        val host = url.host
+        val cookies = cookieStore[host] ?: return emptyList()
+        val now = System.currentTimeMillis()
+        synchronized(cookies) {
+            cookies.removeAll { it.expiresAt < now }
+            return ArrayList(cookies)
+        }
+    }
+}
+
+object AppUpdateManager {
+    private val firestore by lazy { FirebaseFirestore.getInstance() }
+    private val scope = CoroutineScope(Dispatchers.IO)
+
+    private val cookieJar = InMemoryCookieJar()
+    private val httpClient = OkHttpClient.Builder()
+        .cookieJar(cookieJar)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .readTimeout(180, TimeUnit.SECONDS)
+        .followRedirects(true)
+        .followSslRedirects(true)
+        .retryOnConnectionFailure(true)
+        .build()
+
+    val currentVersionCode: Int = try {
+        BuildConfig.VERSION_CODE
+    } catch (_: Exception) {
+        1
+    }
+
+    val currentVersionName: String = try {
+        BuildConfig.VERSION_NAME
+    } catch (_: Exception) {
+        "9.0"
+    }
+
+    private val _updateAvailable = MutableStateFlow<AppUpdateInfo?>(null)
+    val updateAvailable: StateFlow<AppUpdateInfo?> = _updateAvailable.asStateFlow()
+
+    private val _isChecking = MutableStateFlow(false)
+    val isChecking: StateFlow<Boolean> = _isChecking.asStateFlow()
+
+    private val _downloadProgress = MutableStateFlow<Float?>(null)
+    val downloadProgress: StateFlow<Float?> = _downloadProgress.asStateFlow()
+
+    private val _isDownloading = MutableStateFlow(false)
+    val isDownloading: StateFlow<Boolean> = _isDownloading.asStateFlow()
+
+    private val _statusMessage = MutableStateFlow<String?>(null)
+    val statusMessage: StateFlow<String?> = _statusMessage.asStateFlow()
+
+    private val _downloadedApkFile = MutableStateFlow<File?>(null)
+    val downloadedApkFile: StateFlow<File?> = _downloadedApkFile.asStateFlow()
+
+    private val _downloadSpeedText = MutableStateFlow<String?>(null)
+    val downloadSpeedText: StateFlow<String?> = _downloadSpeedText.asStateFlow()
+
+    private var hasInitialized = false
+
+    fun init(context: Context) {
+        if (hasInitialized) return
+        hasInitialized = true
+
+        // Listen for real-time OTA updates pushed from anywhere
+        try {
+            firestore.collection("app_updates").document("latest")
+                .addSnapshotListener { snapshot, error ->
+                    if (error != null || snapshot == null || !snapshot.exists()) {
+                        return@addSnapshotListener
+                    }
+                    val remoteCode = snapshot.getLong("versionCode")?.toInt() ?: 0
+                    val remoteName = snapshot.getString("versionName") ?: ""
+                    val downloadUrl = snapshot.getString("downloadUrl") ?: ""
+                    val changelog = snapshot.getString("changelog") ?: ""
+                    val isMandatory = snapshot.getBoolean("isMandatory") ?: false
+                    val publishedAt = snapshot.getLong("publishedAt") ?: System.currentTimeMillis()
+
+                    if (remoteCode > currentVersionCode && downloadUrl.isNotBlank()) {
+                        val info = AppUpdateInfo(
+                            versionCode = remoteCode,
+                            versionName = remoteName,
+                            downloadUrl = downloadUrl,
+                            changelog = changelog,
+                            isMandatory = isMandatory,
+                            publishedAt = publishedAt
+                        )
+                        _updateAvailable.value = info
+                        // Check if file is already on device
+                        findExistingDownloadedApk(context, remoteCode)?.let {
+                            _downloadedApkFile.value = it
+                        }
+                    }
+                }
+        } catch (_: Exception) {}
+    }
+
+    fun checkForUpdates(context: Context, onComplete: ((AppUpdateInfo?) -> Unit)? = null) {
+        scope.launch {
+            _isChecking.value = true
+            _statusMessage.value = "Checking for updates..."
+            try {
+                val doc = firestore.collection("app_updates").document("latest").get().awaitTask()
+                val remoteCode = doc.getLong("versionCode")?.toInt() ?: 0
+                val remoteName = doc.getString("versionName") ?: ""
+                val downloadUrl = doc.getString("downloadUrl") ?: ""
+                val changelog = doc.getString("changelog") ?: ""
+                val isMandatory = doc.getBoolean("isMandatory") ?: false
+                val publishedAt = doc.getLong("publishedAt") ?: System.currentTimeMillis()
+
+                if (remoteCode > currentVersionCode && downloadUrl.isNotBlank()) {
+                    val info = AppUpdateInfo(
+                        versionCode = remoteCode,
+                        versionName = remoteName,
+                        downloadUrl = downloadUrl,
+                        changelog = changelog,
+                        isMandatory = isMandatory,
+                        publishedAt = publishedAt
+                    )
+                    _updateAvailable.value = info
+                    findExistingDownloadedApk(context, remoteCode)?.let {
+                        _downloadedApkFile.value = it
+                    }
+                    _statusMessage.value = "Update v$remoteName available!"
+                    withContext(Dispatchers.Main) { onComplete?.invoke(info) }
+                } else {
+                    _statusMessage.value = "Spring Music is up to date (v$currentVersionName)"
+                    withContext(Dispatchers.Main) { onComplete?.invoke(null) }
+                }
+            } catch (e: Exception) {
+                _statusMessage.value = "Check completed. App is running latest version."
+                withContext(Dispatchers.Main) { onComplete?.invoke(null) }
+            } finally {
+                _isChecking.value = false
+            }
+        }
+    }
+
+    fun dismissUpdate() {
+        _updateAvailable.value = null
+    }
+
+    fun extractGoogleDriveId(url: String): String? {
+        val trimmed = url.trim()
+        val driveRegex = Regex("""drive\.google\.com/file/d/([a-zA-Z0-9_-]+)""")
+        driveRegex.find(trimmed)?.let { return it.groupValues[1] }
+
+        val driveOpenRegex = Regex("""drive\.google\.com/open\?id=([a-zA-Z0-9_-]+)""")
+        driveOpenRegex.find(trimmed)?.let { return it.groupValues[1] }
+
+        val driveUcRegex = Regex("""drive\.google\.com/uc\?(?:.*&)?id=([a-zA-Z0-9_-]+)""")
+        driveUcRegex.find(trimmed)?.let { return it.groupValues[1] }
+
+        val driveUsercontentRegex = Regex("""drive\.usercontent\.google\.com/download\?(?:.*&)?id=([a-zA-Z0-9_-]+)""")
+        driveUsercontentRegex.find(trimmed)?.let { return it.groupValues[1] }
+
+        return null
+    }
+
+    fun normalizeDownloadUrl(url: String): String {
+        val trimmed = url.trim()
+        val driveId = extractGoogleDriveId(trimmed)
+        if (driveId != null) {
+            return "https://drive.usercontent.google.com/download?id=$driveId&export=download&authuser=0&confirm=t"
+        }
+
+        // Dropbox: dl=0 -> dl=1 for direct download
+        if (trimmed.contains("dropbox.com") && trimmed.contains("dl=0")) {
+            return trimmed.replace("dl=0", "dl=1")
+        }
+        return trimmed
+    }
+
+    fun getBrowserFriendlyUrl(url: String): String {
+        val trimmed = url.trim()
+        val driveId = extractGoogleDriveId(trimmed)
+        if (driveId != null) {
+            return "https://drive.google.com/file/d/$driveId/view?usp=sharing"
+        }
+        if (trimmed.contains("dropbox.com") && trimmed.contains("dl=0")) {
+            return trimmed.replace("dl=0", "dl=1")
+        }
+        return trimmed
+    }
+
+    fun openInBrowser(context: Context, url: String) {
+        val browserUrl = getBrowserFriendlyUrl(url)
+        try {
+            val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse(browserUrl)).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(browserIntent)
+        } catch (_: Exception) {
+            try {
+                val fallbackIntent = Intent(Intent.ACTION_VIEW, Uri.parse(url.trim())).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(fallbackIntent)
+            } catch (_: Exception) {}
+        }
+    }
+
+    /**
+     * Download using Android system DownloadManager in the notification bar
+     */
+    fun downloadWithSystemManager(context: Context, info: AppUpdateInfo): Boolean {
+        return try {
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val downloadUrl = normalizeDownloadUrl(info.downloadUrl)
+            val request = DownloadManager.Request(Uri.parse(downloadUrl)).apply {
+                setTitle("Spring Music v${info.versionName}")
+                setDescription("Downloading APK update package...")
+                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "spring_music_v${info.versionCode}.apk")
+                setMimeType("application/vnd.android.package-archive")
+                addRequestHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) SpringMusic/${currentVersionName}")
+            }
+            dm.enqueue(request)
+            _statusMessage.value = "Download started in notifications! Check your notification bar."
+            true
+        } catch (e: Exception) {
+            _statusMessage.value = "Opening browser for download..."
+            openInBrowser(context, info.downloadUrl)
+            false
+        }
+    }
+
+    fun isValidApkFile(file: File?): Boolean {
+        if (file == null || !file.exists() || file.length() < 10000) return false
+        return try {
+            val header = ByteArray(4)
+            FileInputStream(file).use { it.read(header) }
+            // ZIP magic bytes: PK\x03\x04 or PK\x05\x06
+            header[0] == 0x50.toByte() && header[1] == 0x4B.toByte()
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    /**
+     * Searches for any previously downloaded APK on the device matching this update.
+     */
+    fun findExistingDownloadedApk(context: Context, versionCode: Int): File? {
+        val targetName = "spring_music_v$versionCode.apk"
+
+        // 1. App internal cache
+        val cacheFile = File(File(context.cacheDir, "apk_updates"), targetName)
+        if (isValidApkFile(cacheFile)) return cacheFile
+
+        // 2. App external files dir
+        val extAppFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), targetName)
+        if (isValidApkFile(extAppFile)) return extAppFile
+
+        // 3. Public Downloads directory
+        try {
+            val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val publicFile = File(publicDownloads, targetName)
+            if (isValidApkFile(publicFile)) return publicFile
+
+            // Also check recently modified spring*.apk or app-debug*.apk in Downloads
+            val candidates = publicDownloads.listFiles { f ->
+                f.isFile && f.extension.equals("apk", ignoreCase = true) &&
+                        (f.name.contains("spring", ignoreCase = true) || f.name.contains("app-debug", ignoreCase = true))
+            }
+            val recent = candidates?.filter { isValidApkFile(it) }?.maxByOrNull { it.lastModified() }
+            if (recent != null && (System.currentTimeMillis() - recent.lastModified()) < 24 * 3600 * 1000) {
+                return recent
+            }
+        } catch (_: Exception) {}
+
+        return null
+    }
+
+    fun downloadAndInstall(
+        context: Context,
+        info: AppUpdateInfo,
+        onComplete: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null
+    ) {
+        // If already downloaded and valid, directly trigger install
+        val cachedApk = _downloadedApkFile.value ?: findExistingDownloadedApk(context, info.versionCode)
+        if (cachedApk != null && isValidApkFile(cachedApk)) {
+            _downloadedApkFile.value = cachedApk
+            launchPackageInstaller(context, cachedApk)
+            onComplete?.invoke()
+            return
+        }
+
+        if (_isDownloading.value) return
+
+        scope.launch {
+            _isDownloading.value = true
+            _downloadProgress.value = 0.05f
+            _statusMessage.value = "Connecting to download server..."
+            _downloadSpeedText.value = null
+
+            val targetDir = File(context.cacheDir, "apk_updates").apply { mkdirs() }
+            val apkFile = File(targetDir, "spring_music_v${info.versionCode}.apk")
+            if (apkFile.exists()) {
+                apkFile.delete()
+            }
+
+            try {
+                var directUrl = normalizeDownloadUrl(info.downloadUrl)
+                var request = Request.Builder()
+                    .url(directUrl)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) Chrome/128.0.0.0 Mobile SpringMusic/${currentVersionName}")
+                    .addHeader("Accept", "*/*")
+                    .build()
+
+                _statusMessage.value = "Requesting APK package..."
+                var response = httpClient.newCall(request).execute()
+
+                // Check if Google Drive or web host returned HTML confirmation page
+                val contentType = response.header("Content-Type", "") ?: ""
+                val isHtml = contentType.contains("text/html", ignoreCase = true)
+
+                if (isHtml) {
+                    val htmlBody = response.body?.string().orEmpty()
+
+                    // Parse Google Drive confirm form/token
+                    val confirmRegex = Regex("""confirm=([0-9a-zA-Z_-]+)""")
+                    val confirmMatch = confirmRegex.find(htmlBody)
+                    val formActionRegex = Regex("""<form[^>]*action=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                    val formActionMatch = formActionRegex.find(htmlBody)
+
+                    val driveId = extractGoogleDriveId(info.downloadUrl)
+
+                    var newTargetUrl: String? = null
+                    if (formActionMatch != null && formActionMatch.groupValues[1].isNotBlank()) {
+                        var action = formActionMatch.groupValues[1]
+                        if (!action.startsWith("http")) {
+                            action = "https://drive.usercontent.google.com$action"
+                        }
+                        // Extract hidden fields
+                        val hiddenInputs = Regex("""<input[^>]*name=["']([^"']+)["'][^>]*value=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                        val params = hiddenInputs.findAll(htmlBody).map { "${it.groupValues[1]}=${it.groupValues[2]}" }.joinToString("&")
+                        newTargetUrl = if (params.isNotBlank()) "$action?$params" else action
+                    } else if (confirmMatch != null && driveId != null) {
+                        val token = confirmMatch.groupValues[1]
+                        newTargetUrl = "https://drive.usercontent.google.com/download?id=$driveId&export=download&confirm=$token"
+                    } else if (driveId != null) {
+                        newTargetUrl = "https://drive.usercontent.google.com/download?id=$driveId&export=download&confirm=t"
+                    }
+
+                    if (newTargetUrl != null) {
+                        directUrl = newTargetUrl
+                        request = Request.Builder()
+                            .url(directUrl)
+                            .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) Chrome/128.0.0.0 Mobile SpringMusic/${currentVersionName}")
+                            .addHeader("Accept", "*/*")
+                            .build()
+                        response = httpClient.newCall(request).execute()
+                    }
+                }
+
+                if (!response.isSuccessful) {
+                    if (response.code == 404) {
+                        val isGithub = directUrl.contains("github.com", ignoreCase = true)
+                        val advice = if (isGithub) {
+                            "Error 404 (Not Found): GitHub returned 404 for this APK link.\n\n" +
+                            "Possible reasons:\n" +
+                            "1. The GitHub repository is Private (GitHub blocks downloads from private repos).\n" +
+                            "2. The release or tag does not exist (check if tag needs 'v' prefix, e.g. v9.3.1).\n" +
+                            "3. The asset 'app-debug.apk' was not uploaded to this release.\n\n" +
+                            "Solution: Make the repository Public, or upload the APK to Google Drive (set to 'Anyone with link') and use the Google Drive link."
+                        } else {
+                            "Error 404 (Not Found): The APK file was not found on the download server.\n" +
+                            "Please check the URL or host the APK on Google Drive."
+                        }
+                        throw IllegalStateException(advice)
+                    }
+                    throw IllegalStateException("Error ${response.code}: Server returned HTTP ${response.code}")
+                }
+
+                val body = response.body ?: throw IllegalStateException("Empty response body")
+                val totalBytes = body.contentLength()
+
+                _statusMessage.value = "Downloading update package..."
+                val startTime = System.currentTimeMillis()
+                body.byteStream().use { input ->
+                    FileOutputStream(apkFile).use { output ->
+                        val buffer = ByteArray(64 * 1024)
+                        var bytesRead: Int
+                        var downloadedBytes = 0L
+
+                        while (input.read(buffer).also { bytesRead = it } != -1) {
+                            output.write(buffer, 0, bytesRead)
+                            downloadedBytes += bytesRead
+                            if (totalBytes > 0) {
+                                val progress = (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+                                _downloadProgress.value = progress
+
+                                val elapsedSec = (System.currentTimeMillis() - startTime) / 1000.0
+                                if (elapsedSec > 0.4) {
+                                    val mbDownloaded = downloadedBytes / (1024.0 * 1024.0)
+                                    val mbTotal = totalBytes / (1024.0 * 1024.0)
+                                    val speed = mbDownloaded / elapsedSec
+                                    _downloadSpeedText.value = String.format("%.1f MB / %.1f MB (%.1f MB/s)", mbDownloaded, mbTotal, speed)
+                                }
+                            }
+                        }
+                        output.flush()
+                    }
+                }
+
+                // Verify file header: APK/ZIP files must start with PK (0x50 0x4B)
+                val isValid = isValidApkFile(apkFile)
+
+                if (!isValid) {
+                    apkFile.delete()
+                    // Auto handoff to System DownloadManager & Browser so user is never stuck
+                    _statusMessage.value = "Direct stream required browser confirmation. Opening Chrome..."
+                    withContext(Dispatchers.Main) {
+                        openInBrowser(context, info.downloadUrl)
+                    }
+                    throw IllegalStateException("File host required browser confirmation. Opening Chrome to download.")
+                }
+
+                apkFile.setReadable(true, false)
+                _downloadedApkFile.value = apkFile
+                _downloadProgress.value = 1.0f
+                _statusMessage.value = "Download completed! Preparing installer..."
+
+                withContext(Dispatchers.Main) {
+                    launchPackageInstaller(context, apkFile)
+                    onComplete?.invoke()
+                }
+            } catch (e: Exception) {
+                val errorMsg = e.localizedMessage ?: "Failed to download update"
+                _statusMessage.value = errorMsg
+                withContext(Dispatchers.Main) {
+                    onError?.invoke(errorMsg)
+                }
+            } finally {
+                _isDownloading.value = false
+            }
+        }
+    }
+
+    fun launchPackageInstaller(context: Context, apkFile: File) {
+        if (!isValidApkFile(apkFile)) {
+            _statusMessage.value = "Error: Downloaded APK file is incomplete or invalid"
+            return
+        }
+
+        // On Android 8.0+, verify unknown app install permission
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            if (!context.packageManager.canRequestPackageInstalls()) {
+                _statusMessage.value = "Please allow 'Install unknown apps' in Settings, then tap Install Update again."
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${context.packageName}")
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+                return
+            }
+        }
+
+        // Ensure file is in app's cache directory where FileProvider has full authority
+        val installableFile = if (apkFile.parentFile == File(context.cacheDir, "apk_updates")) {
+            apkFile
+        } else {
+            try {
+                val targetDir = File(context.cacheDir, "apk_updates").apply { mkdirs() }
+                val dest = File(targetDir, apkFile.name)
+                apkFile.copyTo(dest, overwrite = true)
+                dest.setReadable(true, false)
+                dest
+            } catch (_: Exception) {
+                apkFile
+            }
+        }
+
+        val authority = "${context.packageName}.fileprovider"
+        val apkUri = FileProvider.getUriForFile(context, authority, installableFile)
+
+        val installIntent = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(apkUri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+
+        try {
+            val resolveInfos = context.packageManager.queryIntentActivities(installIntent, 0)
+            for (resolveInfo in resolveInfos) {
+                val pkg = resolveInfo.activityInfo.packageName
+                context.grantUriPermission(pkg, apkUri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        } catch (_: Exception) {}
+
+        try {
+            context.startActivity(installIntent)
+            _statusMessage.value = "Package installer launched!"
+        } catch (e: Exception) {
+            _statusMessage.value = "Installer error: ${e.message}. Try browser download."
+        }
+    }
+
+    /**
+     * Probes a download URL to test if it is valid and publicly reachable (not returning 404).
+     */
+    suspend fun probeUrl(url: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val trimmed = url.trim()
+        if (trimmed.isBlank() || (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true))) {
+            return@withContext Pair(false, "Invalid link: URL must begin with https:// or http://")
+        }
+        val targetUrl = normalizeDownloadUrl(trimmed)
+        try {
+            val request = Request.Builder()
+                .url(targetUrl)
+                .header("Range", "bytes=0-10")
+                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) Chrome/128.0.0.0 Mobile SpringMusic/${currentVersionName}")
+                .build()
+            val response = httpClient.newCall(request).execute()
+            if (response.code == 404) {
+                val isGithub = trimmed.contains("github.com", ignoreCase = true)
+                val msg = if (isGithub) {
+                    "HTTP 404 Not Found: The file was not found on GitHub.\n" +
+                    "• The GitHub repository may be Private (GitHub blocks public downloads from private repos).\n" +
+                    "• The release tag or file name might not match (e.g. check if tag needs 'v' prefix like 'v9.3.1').\n" +
+                    "• The asset 'app-debug.apk' was not uploaded.\n" +
+                    "Tip: You can upload your APK to Google Drive, set access to 'Anyone with the link', and paste that link instead!"
+                } else {
+                    "HTTP 404 Not Found: The file does not exist on this server. Check your link or use Google Drive."
+                }
+                return@withContext Pair(false, msg)
+            } else if (response.code in 200..399) {
+                return@withContext Pair(true, "✓ URL is active and reachable (HTTP ${response.code})")
+            } else {
+                return@withContext Pair(false, "Server returned HTTP ${response.code}")
+            }
+        } catch (e: Exception) {
+            return@withContext Pair(false, "Connection check failed: ${e.message}")
+        }
+    }
+
+    /**
+     * Broadcast an update to all installed phones over-the-air.
+     */
+    suspend fun pushUpdate(
+        versionCode: Int,
+        versionName: String,
+        downloadUrl: String,
+        changelog: String,
+        isMandatory: Boolean = false,
+        skipUrlProbe: Boolean = false
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            val trimmedUrl = downloadUrl.trim()
+            if (trimmedUrl.endsWith(".git", ignoreCase = true) || (trimmedUrl.contains("github.com") && !trimmedUrl.contains("/download/") && !trimmedUrl.contains("/raw/"))) {
+                return@withContext Result.failure(
+                    IllegalArgumentException("You entered a GitHub repository link ($trimmedUrl). An APK download link must be a direct link to the .apk file, such as from GitHub Releases or Google Drive.")
+                )
+            }
+
+            // Probe URL before broadcasting unless explicitly skipped
+            if (!skipUrlProbe) {
+                val probeResult = probeUrl(trimmedUrl)
+                if (!probeResult.first && probeResult.second.contains("404")) {
+                    return@withContext Result.failure(
+                        IllegalArgumentException(probeResult.second)
+                    )
+                }
+            }
+
+            val data = hashMapOf(
+                "versionCode" to versionCode,
+                "versionName" to versionName,
+                "downloadUrl" to trimmedUrl,
+                "changelog" to changelog.trim(),
+                "isMandatory" to isMandatory,
+                "publishedAt" to System.currentTimeMillis()
+            )
+
+            // Save to latest document (which all phones listen to)
+            firestore.collection("app_updates").document("latest").set(data).awaitTask()
+            // Archive to history document
+            firestore.collection("app_updates").document("v$versionCode").set(data).awaitTask()
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Clear the active cloud broadcast so devices stop prompting for broken updates.
+     */
+    suspend fun clearPushedUpdate(): Result<Unit> = withContext(Dispatchers.IO) {
+        try {
+            firestore.collection("app_updates").document("latest").delete().awaitTask()
+            _updateAvailable.value = null
+            _statusMessage.value = "Update broadcast removed from cloud."
+            Result.success(Unit)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private suspend fun <T> com.google.android.gms.tasks.Task<T>.awaitTask(): T {
+        return kotlin.coroutines.suspendCoroutine { cont ->
+            addOnSuccessListener { cont.resumeWith(Result.success(it)) }
+            addOnFailureListener { cont.resumeWith(Result.failure(it)) }
+        }
+    }
+}

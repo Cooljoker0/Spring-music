@@ -1,0 +1,6 @@
+{
+  "name": "Spring Music",
+  "description": "High fidelity streaming music player with curated moods, offline downloads, sleep timer, background Media3 playback, and audio quality selector.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
