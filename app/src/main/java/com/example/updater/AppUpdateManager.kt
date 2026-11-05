@@ -79,15 +79,21 @@ object AppUpdateManager {
         .build()
 
     val currentVersionCode: Int = try {
-        BuildConfig.VERSION_CODE
+        BuildConfig.APP_VERSION_CODE
     } catch (_: Exception) {
-        1
+        try { BuildConfig.VERSION_CODE } catch (_: Exception) { 2 }
     }
 
     val currentVersionName: String = try {
-        BuildConfig.VERSION_NAME
+        BuildConfig.APP_VERSION_NAME
     } catch (_: Exception) {
-        "9.0"
+        try { BuildConfig.VERSION_NAME } catch (_: Exception) { "9.1" }
+    }
+
+    val currentVersionFull: String = try {
+        BuildConfig.APP_VERSION_FULL
+    } catch (_: Exception) {
+        "v$currentVersionName (Build $currentVersionCode)"
     }
 
     private val _updateAvailable = MutableStateFlow<AppUpdateInfo?>(null)
@@ -121,7 +127,12 @@ object AppUpdateManager {
         try {
             firestore.collection("app_updates").document("latest")
                 .addSnapshotListener { snapshot, error ->
-                    if (error != null || snapshot == null || !snapshot.exists()) {
+                    if (error != null) {
+                        return@addSnapshotListener
+                    }
+                    if (snapshot == null || !snapshot.exists()) {
+                        _updateAvailable.value = null
+                        _statusMessage.value = "Spring Music is up to date (v$currentVersionName)"
                         return@addSnapshotListener
                     }
                     val remoteCode = snapshot.getLong("versionCode")?.toInt() ?: 0
@@ -132,6 +143,12 @@ object AppUpdateManager {
                     val publishedAt = snapshot.getLong("publishedAt") ?: System.currentTimeMillis()
 
                     if (remoteCode > currentVersionCode && downloadUrl.isNotBlank()) {
+                        val prefs = context.getSharedPreferences("spring_updater_prefs", Context.MODE_PRIVATE)
+                        val dismissedCode = prefs.getInt("dismissed_version_code", -1)
+                        if (!isMandatory && remoteCode <= dismissedCode) {
+                            return@addSnapshotListener
+                        }
+
                         val info = AppUpdateInfo(
                             versionCode = remoteCode,
                             versionName = remoteName,
@@ -145,17 +162,31 @@ object AppUpdateManager {
                         findExistingDownloadedApk(context, remoteCode)?.let {
                             _downloadedApkFile.value = it
                         }
+                    } else {
+                        _updateAvailable.value = null
+                        _statusMessage.value = "Spring Music is up to date (v$currentVersionName)"
                     }
                 }
         } catch (_: Exception) {}
     }
 
-    fun checkForUpdates(context: Context, onComplete: ((AppUpdateInfo?) -> Unit)? = null) {
+    fun checkForUpdates(
+        context: Context,
+        isManualCheck: Boolean = false,
+        onComplete: ((AppUpdateInfo?) -> Unit)? = null
+    ) {
         scope.launch {
             _isChecking.value = true
             _statusMessage.value = "Checking for updates..."
             try {
                 val doc = firestore.collection("app_updates").document("latest").get().awaitTask()
+                if (!doc.exists()) {
+                    _updateAvailable.value = null
+                    _statusMessage.value = "Spring Music is up to date (v$currentVersionName)"
+                    withContext(Dispatchers.Main) { onComplete?.invoke(null) }
+                    return@launch
+                }
+
                 val remoteCode = doc.getLong("versionCode")?.toInt() ?: 0
                 val remoteName = doc.getString("versionName") ?: ""
                 val downloadUrl = doc.getString("downloadUrl") ?: ""
@@ -164,6 +195,15 @@ object AppUpdateManager {
                 val publishedAt = doc.getLong("publishedAt") ?: System.currentTimeMillis()
 
                 if (remoteCode > currentVersionCode && downloadUrl.isNotBlank()) {
+                    val prefs = context.getSharedPreferences("spring_updater_prefs", Context.MODE_PRIVATE)
+                    val dismissedCode = prefs.getInt("dismissed_version_code", -1)
+
+                    if (!isManualCheck && !isMandatory && remoteCode <= dismissedCode) {
+                        _statusMessage.value = "Update v$remoteName available"
+                        withContext(Dispatchers.Main) { onComplete?.invoke(null) }
+                        return@launch
+                    }
+
                     val info = AppUpdateInfo(
                         versionCode = remoteCode,
                         versionName = remoteName,
@@ -179,6 +219,7 @@ object AppUpdateManager {
                     _statusMessage.value = "Update v$remoteName available!"
                     withContext(Dispatchers.Main) { onComplete?.invoke(info) }
                 } else {
+                    _updateAvailable.value = null
                     _statusMessage.value = "Spring Music is up to date (v$currentVersionName)"
                     withContext(Dispatchers.Main) { onComplete?.invoke(null) }
                 }
@@ -191,8 +232,12 @@ object AppUpdateManager {
         }
     }
 
-    fun dismissUpdate() {
+    fun dismissUpdate(context: Context? = null, forVersionCode: Int? = null) {
         _updateAvailable.value = null
+        if (context != null && forVersionCode != null) {
+            val prefs = context.getSharedPreferences("spring_updater_prefs", Context.MODE_PRIVATE)
+            prefs.edit().putInt("dismissed_version_code", forVersionCode).apply()
+        }
     }
 
     fun extractGoogleDriveId(url: String): String? {
@@ -293,33 +338,60 @@ object AppUpdateManager {
     }
 
     /**
-     * Searches for any previously downloaded APK on the device matching this update.
+     * Inspects the internal package manifest of an APK file to read its actual versionCode.
      */
-    fun findExistingDownloadedApk(context: Context, versionCode: Int): File? {
-        val targetName = "spring_music_v$versionCode.apk"
+    fun getApkVersionCode(context: Context, file: File?): Int {
+        if (file == null || !file.exists()) return -1
+        return try {
+            val pm = context.packageManager
+            val pi = pm.getPackageArchiveInfo(file.absolutePath, 0) ?: return -1
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                pi.longVersionCode.toInt()
+            } else {
+                @Suppress("DEPRECATION")
+                pi.versionCode
+            }
+        } catch (_: Exception) {
+            -1
+        }
+    }
+
+    /**
+     * Searches for any previously downloaded APK on the device matching this update.
+     * Verifies that the APK's internal versionCode actually matches or exceeds the update.
+     */
+    fun findExistingDownloadedApk(context: Context, targetVersionCode: Int): File? {
+        val targetName = "spring_music_v$targetVersionCode.apk"
+
+        fun isMatchingApk(file: File?): Boolean {
+            if (!isValidApkFile(file)) return false
+            val fileCode = getApkVersionCode(context, file)
+            // MUST match or exceed targetVersionCode to prevent reinstalling outdated versions
+            return fileCode >= targetVersionCode
+        }
 
         // 1. App internal cache
         val cacheFile = File(File(context.cacheDir, "apk_updates"), targetName)
-        if (isValidApkFile(cacheFile)) return cacheFile
+        if (isMatchingApk(cacheFile)) return cacheFile
 
         // 2. App external files dir
         val extAppFile = File(context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS), targetName)
-        if (isValidApkFile(extAppFile)) return extAppFile
+        if (isMatchingApk(extAppFile)) return extAppFile
 
         // 3. Public Downloads directory
         try {
             val publicDownloads = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
             val publicFile = File(publicDownloads, targetName)
-            if (isValidApkFile(publicFile)) return publicFile
+            if (isMatchingApk(publicFile)) return publicFile
 
-            // Also check recently modified spring*.apk or app-debug*.apk in Downloads
+            // Check recently modified candidates in Downloads ONLY IF internal version matches
             val candidates = publicDownloads.listFiles { f ->
                 f.isFile && f.extension.equals("apk", ignoreCase = true) &&
                         (f.name.contains("spring", ignoreCase = true) || f.name.contains("app-debug", ignoreCase = true))
             }
-            val recent = candidates?.filter { isValidApkFile(it) }?.maxByOrNull { it.lastModified() }
-            if (recent != null && (System.currentTimeMillis() - recent.lastModified()) < 24 * 3600 * 1000) {
-                return recent
+            val matchingRecent = candidates?.filter { isMatchingApk(it) }?.maxByOrNull { it.lastModified() }
+            if (matchingRecent != null && (System.currentTimeMillis() - matchingRecent.lastModified()) < 24 * 3600 * 1000) {
+                return matchingRecent
             }
         } catch (_: Exception) {}
 
@@ -332,9 +404,9 @@ object AppUpdateManager {
         onComplete: (() -> Unit)? = null,
         onError: ((String) -> Unit)? = null
     ) {
-        // If already downloaded and valid, directly trigger install
+        // If already downloaded and valid with matching version, directly trigger install
         val cachedApk = _downloadedApkFile.value ?: findExistingDownloadedApk(context, info.versionCode)
-        if (cachedApk != null && isValidApkFile(cachedApk)) {
+        if (cachedApk != null && isValidApkFile(cachedApk) && getApkVersionCode(context, cachedApk) >= info.versionCode) {
             _downloadedApkFile.value = cachedApk
             launchPackageInstaller(context, cachedApk)
             onComplete?.invoke()
@@ -366,12 +438,37 @@ object AppUpdateManager {
                 _statusMessage.value = "Requesting APK package..."
                 var response = httpClient.newCall(request).execute()
 
-                // Check if Google Drive or web host returned HTML confirmation page
+                val finalHost = response.request.url.host
+                val finalUrlStr = response.request.url.toString()
                 val contentType = response.header("Content-Type", "") ?: ""
                 val isHtml = contentType.contains("text/html", ignoreCase = true)
+                val isDrive = info.downloadUrl.contains("drive.google.com") || info.downloadUrl.contains("drive.usercontent")
+
+                // Detect Google Drive Restricted access / Permission barrier
+                if (finalHost.contains("accounts.google.com") || finalUrlStr.contains("ServiceLogin") || finalUrlStr.contains("signin") || (isDrive && (response.code == 401 || response.code == 403))) {
+                    throw IllegalStateException(
+                        "Google Drive Permission Error: This Google Drive link is Restricted.\n\n" +
+                        "To fix in Google Drive:\n" +
+                        "1. Open Google Drive on PC or phone.\n" +
+                        "2. Tap the 3 dots on the APK file -> 'Share'.\n" +
+                        "3. Change General Access from 'Restricted' to 'Anyone with the link' (Viewer).\n" +
+                        "4. Tap 'Copy link' and update the broadcast."
+                    )
+                }
 
                 if (isHtml) {
                     val htmlBody = response.body?.string().orEmpty()
+
+                    if (htmlBody.contains("Sign in - Google Accounts") || htmlBody.contains("You need access") || htmlBody.contains("Request access")) {
+                        throw IllegalStateException(
+                            "Google Drive Permission Error: This Google Drive link is Restricted.\n\n" +
+                            "To fix in Google Drive:\n" +
+                            "1. Open Google Drive on PC or phone.\n" +
+                            "2. Tap the 3 dots on the APK file -> 'Share'.\n" +
+                            "3. Change General Access from 'Restricted' to 'Anyone with the link' (Viewer).\n" +
+                            "4. Tap 'Copy link' and update the broadcast."
+                        )
+                    }
 
                     // Parse Google Drive confirm form/token
                     val confirmRegex = Regex("""confirm=([0-9a-zA-Z_-]+)""")
@@ -570,6 +667,22 @@ object AppUpdateManager {
                 .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) Chrome/128.0.0.0 Mobile SpringMusic/${currentVersionName}")
                 .build()
             val response = httpClient.newCall(request).execute()
+            val finalHost = response.request.url.host
+            val finalUrlStr = response.request.url.toString()
+            val isDrive = trimmed.contains("drive.google.com") || trimmed.contains("drive.usercontent")
+
+            if (finalHost.contains("accounts.google.com") || finalUrlStr.contains("ServiceLogin") || finalUrlStr.contains("signin") || (isDrive && (response.code == 401 || response.code == 403))) {
+                return@withContext Pair(
+                    false,
+                    "Google Drive Permission Error: This link requires owner permission (Restricted access).\n\n" +
+                    "To fix in Google Drive:\n" +
+                    "1. Open Google Drive on your PC or phone.\n" +
+                    "2. Tap the 3 dots on the APK file -> 'Share'.\n" +
+                    "3. Under 'General access', change from 'Restricted' to 'Anyone with the link' (Viewer).\n" +
+                    "4. Tap 'Copy link' and test/broadcast again."
+                )
+            }
+
             if (response.code == 404) {
                 val isGithub = trimmed.contains("github.com", ignoreCase = true)
                 val msg = if (isGithub) {

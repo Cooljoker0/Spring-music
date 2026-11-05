@@ -9,6 +9,7 @@ import com.example.data.local.UserPlaylistEntity
 import com.example.data.model.AudioQuality
 import com.example.data.model.Playlist
 import com.example.data.model.Song
+import com.example.data.network.JukeboxClient
 import com.example.data.network.NetworkClient
 import com.example.data.network.PresetCatalog
 import com.example.data.network.SpotifyImporter
@@ -213,6 +214,7 @@ class MusicRepository(
                     var coverUrl = track.cover
                     var audioQualities = listOf<AudioQuality>()
 
+                    var sourceEngine = "jiosaavn"
                     try {
                         val searchRes = NetworkClient.apiService.searchSongs("${track.title} ${track.artist}")
                         val firstMatch = searchRes.data?.results?.firstOrNull()
@@ -221,15 +223,19 @@ class MusicRepository(
                             streamUrl = domainSong.audioUrl
                             if (coverUrl.isBlank()) coverUrl = domainSong.coverUrl
                             audioQualities = domainSong.qualityList
+                            sourceEngine = "jiosaavn"
                         }
                     } catch (_: Exception) {}
 
-                    // Fallback audio if not resolved directly
-                    if (streamUrl.isBlank() && PresetCatalog.PRESET_SONGS.isNotEmpty()) {
-                        val presetFallback = PresetCatalog.PRESET_SONGS[trackIndex % PresetCatalog.PRESET_SONGS.size]
-                        streamUrl = presetFallback.audioUrl
-                        if (coverUrl.isBlank()) coverUrl = presetFallback.coverUrl
-                        audioQualities = presetFallback.qualityList
+                    // Fallback to Jukebox streaming API if JioSaavn doesn't have the song!
+                    if (streamUrl.isBlank()) {
+                        streamUrl = JukeboxClient.buildStreamUrl(
+                            title = track.title,
+                            artist = track.artist,
+                            spotifyTrackId = track.id,
+                            context = context
+                        )
+                        sourceEngine = "jukebox"
                     }
 
                     val current = completedCount.incrementAndGet()
@@ -251,7 +257,8 @@ class MusicRepository(
                         audioUrl = streamUrl,
                         durationMs = if (track.durationMs > 0) track.durationMs else 180000L,
                         mood = "Spring",
-                        sourceEngine = "spring_import",
+                        sourceEngine = sourceEngine,
+                        spotifyId = track.id.ifBlank { null },
                         qualityList = audioQualities
                     )
                 }

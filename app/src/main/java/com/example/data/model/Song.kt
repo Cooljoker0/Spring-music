@@ -15,11 +15,15 @@ data class Song(
     val mood: String = "Focus",
     val streamId: String = "",
     val sourceEngine: String = "jiosaavn",
+    val spotifyId: String? = null,
     val qualityList: List<AudioQuality> = emptyList(),
     val isFavorite: Boolean = false,
     val isDownloaded: Boolean = false,
     val localFilePath: String? = null
 ) {
+    val isJukeboxEngine: Boolean
+        get() = sourceEngine.equals("jukebox", ignoreCase = true)
+
     val effectivePlayableUri: String
         get() = if (!localFilePath.isNullOrBlank()) localFilePath else audioUrl
 

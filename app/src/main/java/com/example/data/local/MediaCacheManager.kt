@@ -44,7 +44,6 @@ object MediaCacheManager {
             val defaultHeaders = mapOf(
                 "User-Agent" to "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36",
                 "Accept" to "*/*",
-                "Referer" to "https://open.spotify.com/",
                 "Accept-Language" to "en-US,en;q=0.9"
             )
 
@@ -77,7 +76,6 @@ object MediaCacheManager {
 
             val connection = (URL(song.audioUrl).openConnection() as HttpURLConnection).apply {
                 setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
-                setRequestProperty("Referer", "https://open.spotify.com/")
                 setRequestProperty("Accept", "*/*")
                 connectTimeout = 20000
                 readTimeout = 30000

@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -31,9 +32,12 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ContentPaste
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Logout
+import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material.icons.filled.Upload
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -47,6 +51,7 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import com.example.updater.AppUpdateManager
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -65,6 +70,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -164,7 +170,8 @@ fun SettingsScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 12.dp),
+                    .statusBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 if (onBack != null) {
@@ -723,6 +730,7 @@ fun SettingsScreen(
                 }
             }
         }
+
         // Section: Storage
         item {
             SpotifySectionHeader("Storage & Offline Cache")
@@ -827,7 +835,7 @@ fun SettingsScreen(
 
                         Button(
                             onClick = {
-                                AppUpdateManager.checkForUpdates(context)
+                                AppUpdateManager.checkForUpdates(context, isManualCheck = true)
                             },
                             enabled = !isCheckingUpdates,
                             shape = RoundedCornerShape(20.dp),
@@ -1061,6 +1069,35 @@ fun SettingsScreen(
                                 )
                             )
 
+                            if (pushDownloadUrl.contains("drive.google.com") || pushDownloadUrl.contains("drive.usercontent")) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Card(
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color(0xFF1E2822)),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Info,
+                                            contentDescription = null,
+                                            tint = primaryColor,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = "Google Drive Tip: Ensure 'Anyone with the link' is selected under Share -> General access in Google Drive. If set to Restricted, other devices will get an owner permission error.",
+                                            color = SpotifyTextSecondary,
+                                            fontSize = 11.sp,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                }
+                            }
+
                             Spacer(modifier = Modifier.height(6.dp))
 
                             // Test Link Button
@@ -1287,7 +1324,7 @@ fun SettingsScreen(
             SpotifySectionHeader("About")
             Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
                 Text(
-                    text = "Spring Music v9.0",
+                    text = "Spring Music v${AppUpdateManager.currentVersionName}",
                     color = SpotifyTextPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Medium

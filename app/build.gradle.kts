@@ -94,6 +94,17 @@ tasks.matching { it.name.contains("Signing", ignoreCase = true) }.configureEach 
     }
 }
 
+// --- Synchronized App Version Metadata ---
+object AppVersionConfig {
+    const val MAJOR = 9
+    const val MINOR = 1
+    const val BUILD_CODE = 2
+
+    fun getVersionName(): String = "$MAJOR.$MINOR"
+    fun getVersionCode(): Int = BUILD_CODE
+    fun getFormattedVersionString(): String = "v${getVersionName()} (Build ${getVersionCode()})"
+}
+
 android {
     namespace = "com.example"
     compileSdk = 36
@@ -102,8 +113,12 @@ android {
         applicationId = "com.aistudio.springmusic.qvxkzp"
         minSdk = 24
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = AppVersionConfig.getVersionCode()
+        versionName = AppVersionConfig.getVersionName()
+
+        buildConfigField("String", "APP_VERSION_NAME", "\"${AppVersionConfig.getVersionName()}\"")
+        buildConfigField("int", "APP_VERSION_CODE", "${AppVersionConfig.getVersionCode()}")
+        buildConfigField("String", "APP_VERSION_FULL", "\"${AppVersionConfig.getFormattedVersionString()}\"")
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         resourceConfigurations += listOf("en")
@@ -228,4 +243,30 @@ tasks.withType<Test> {
     testLogging {
         events("passed", "failed", "skipped")
     }
+}
+
+// Build-time verification check to ensure app correctly identifies its own version
+tasks.register("verifyAppVersionMetadata") {
+    group = "verification"
+    description = "Verifies that user-facing app version string (versionName) is strictly synchronized with internal build metadata."
+    doLast {
+        val vCode = android.defaultConfig.versionCode
+        val vName = android.defaultConfig.versionName
+        check(vCode != null && vCode == AppVersionConfig.getVersionCode()) {
+            "Build verification failed: defaultConfig.versionCode ($vCode) != AppVersionConfig (${AppVersionConfig.getVersionCode()})"
+        }
+        check(!vName.isNullOrBlank() && vName == AppVersionConfig.getVersionName()) {
+            "Build verification failed: defaultConfig.versionName ($vName) != AppVersionConfig (${AppVersionConfig.getVersionName()})"
+        }
+        println("=================================================================")
+        println(" [BUILD VERIFICATION] App Version Strictly Synchronized:")
+        println("  Version Name: $vName")
+        println("  Version Code: $vCode")
+        println("  Full String : ${AppVersionConfig.getFormattedVersionString()}")
+        println("=================================================================")
+    }
+}
+
+tasks.matching { it.name.startsWith("compile") || it.name.startsWith("assemble") || it.name.startsWith("bundle") }.configureEach {
+    dependsOn("verifyAppVersionMetadata")
 }

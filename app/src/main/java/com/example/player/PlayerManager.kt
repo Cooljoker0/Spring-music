@@ -11,6 +11,7 @@ import androidx.media3.session.SessionToken
 import com.example.SpringApplication
 import com.example.data.model.AudioQuality
 import com.example.data.model.Song
+import com.example.data.network.JukeboxClient
 import com.example.service.SpringMediaLibraryService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -61,6 +62,8 @@ class PlayerManager(private val context: Context) {
     private var progressJob: Job? = null
     private var sleepTimerJob: Job? = null
     private var lastErrorTimestamp = 0L
+    private var lastHandledErrorTimestamp = 0L
+    private var lastHandledSongId: String? = null
     private var consecutiveErrors = 0
     private val maxConsecutiveSkips = 5
 
@@ -120,14 +123,74 @@ class PlayerManager(private val context: Context) {
                 android.util.Log.e("PlayerManager", "Playback error: ${error.errorCodeName} - ${error.message}", error)
                 _isPlaying.value = false
                 progressJob?.cancel()
-                handleAutoSkipOnError(player, error)
+                handlePlaybackError(player, error)
             }
         })
     }
 
+    /**
+     * Implements the engine streaming flow:
+     * Spring Music -> JioSaavn -> Is playable?
+     *   - Yes: Play JioSaavn
+     *   - No: Jukebox (alexwohlbruck/jukebox) -> Try streaming
+     *   - If both fail: Skip to next track
+     */
+    fun handlePlaybackError(sourcePlayer: Player? = null, error: androidx.media3.common.PlaybackException? = null) {
+        val now = System.currentTimeMillis()
+        val failedSong = _currentSong.value
+
+        // Prevent duplicate concurrent handling on rapid callbacks
+        if (now - lastHandledErrorTimestamp < 1200L && failedSong?.id == lastHandledSongId) {
+            android.util.Log.d("PlayerManager", "Ignoring duplicate error callback for ${failedSong?.title}")
+            return
+        }
+        lastHandledErrorTimestamp = now
+        lastHandledSongId = failedSong?.id
+
+        val player = sourcePlayer ?: getActivePlayer()
+
+        // Check if JioSaavn failed and Jukebox hasn't been tried yet
+        if (failedSong != null && !failedSong.isJukeboxEngine && failedSong.localFilePath.isNullOrBlank()) {
+            android.util.Log.w(
+                "PlayerManager",
+                "JioSaavn stream not playable for \"${failedSong.title}\" (${error?.errorCodeName}). Routing to Jukebox fallback stream..."
+            )
+
+            val jukeboxSong = JukeboxClient.createJukeboxFallbackSong(failedSong, context)
+            _currentSong.value = jukeboxSong
+            val updatedQueue = _queue.value.map { if (it.id == failedSong.id) jukeboxSong else it }
+            _queue.value = updatedQueue
+
+            scope.launch {
+                delay(80)
+                val active = getActivePlayer() ?: player
+                if (active != null) {
+                    try {
+                        active.stop()
+                        val mediaItems = updatedQueue.map { it.toMediaItem() }
+                        val targetIndex = updatedQueue.indexOfFirst { it.id == jukeboxSong.id }.coerceAtLeast(0)
+                        active.setMediaItems(mediaItems, targetIndex, 0L)
+                        active.prepare()
+                        active.play()
+                        _isPlaying.value = true
+                        startProgressTracking()
+                    } catch (e: Exception) {
+                        android.util.Log.e("PlayerManager", "Failed to switch stream to Jukebox: ${e.message}", e)
+                        handleAutoSkipOnError(active, null)
+                    }
+                }
+            }
+            return
+        }
+
+        // Both engines failed or already on Jukebox: skip to next song
+        android.util.Log.w("PlayerManager", "Audio unplayable on both JioSaavn and Jukebox: ${failedSong?.title}. Skipping to next track...")
+        handleAutoSkipOnError(player, error)
+    }
+
     fun handleAutoSkipOnError(sourcePlayer: Player? = null, error: androidx.media3.common.PlaybackException? = null) {
         val now = System.currentTimeMillis()
-        if (now - lastErrorTimestamp < 800) {
+        if (now - lastErrorTimestamp < 1000L) {
             // Debounce rapid duplicate callbacks
             return
         }
@@ -152,40 +215,34 @@ class PlayerManager(private val context: Context) {
         }
 
         android.util.Log.w("PlayerManager", "Skipping unplayable song: $failedTitle. Advancing to next track...")
-        showToast("Skipping unavailable track: $failedTitle")
 
         scope.launch {
-            delay(150)
+            delay(100)
             val active = getActivePlayer() ?: player
-            if (active != null) {
-                if (active.hasNextMediaItem()) {
+            if (q.isNotEmpty()) {
+                val currentIndex = if (failedSong != null) q.indexOfFirst { it.id == failedSong.id } else -1
+                val nextIndex = if (currentIndex in 0 until (q.size - 1)) {
+                    currentIndex + 1
+                } else {
+                    0
+                }
+                val nextSong = q[nextIndex]
+                if (nextSong.id != failedSong?.id) {
+                    playSong(nextSong, q)
+                } else if (active != null && active.hasNextMediaItem()) {
+                    active.stop()
                     active.seekToNextMediaItem()
                     active.prepare()
                     active.play()
                     _isPlaying.value = true
                     startProgressTracking()
-                } else if (q.size > 1) {
-                    val currentIndex = if (failedSong != null) q.indexOfFirst { it.id == failedSong.id } else -1
-                    val nextIndex = if (currentIndex in 0 until (q.size - 1)) {
-                        currentIndex + 1
-                    } else {
-                        0
-                    }
-                    val nextSong = q[nextIndex]
-                    if (active.mediaItemCount > nextIndex) {
-                        active.seekToDefaultPosition(nextIndex)
-                        active.prepare()
-                        active.play()
-                        _isPlaying.value = true
-                        startProgressTracking()
-                    } else {
-                        playSong(nextSong, q)
-                    }
                 } else {
                     _isPlaying.value = false
                     progressJob?.cancel()
-                    showToast("No other tracks in queue.")
                 }
+            } else {
+                _isPlaying.value = false
+                progressJob?.cancel()
             }
         }
     }
@@ -205,23 +262,18 @@ class PlayerManager(private val context: Context) {
     }
 
     fun playSong(song: Song, newQueue: List<Song> = listOf(song)) {
-        val fullQueue = if (newQueue.contains(song)) newQueue else listOf(song) + newQueue
+        val baseQueue = if (newQueue.contains(song)) newQueue else listOf(song) + newQueue
 
-        // If the selected song has an empty playable URI, skip immediately to the next playable song in queue
+        // Pipeline: JioSaavn -> Is playable? -> Yes: play -> No: Jukebox -> Try streaming
         val targetSong = if (song.effectivePlayableUri.isNotBlank()) {
             song
         } else {
-            val startIndex = fullQueue.indexOfFirst { it.id == song.id }
-            val reordered = if (startIndex >= 0) fullQueue.drop(startIndex + 1) + fullQueue.take(startIndex) else fullQueue
-            val fallback = reordered.firstOrNull { it.effectivePlayableUri.isNotBlank() }
-            if (fallback != null) {
-                showToast("Skipping \"${song.title}\" (no playable audio stream)")
-                fallback
-            } else {
-                showToast("Track unavailable: no audio stream found.")
-                return
-            }
+            // JioSaavn has no stream, route directly to Jukebox fallback
+            android.util.Log.i("PlayerManager", "No JioSaavn stream for \"${song.title}\". Routing to Jukebox...")
+            JukeboxClient.createJukeboxFallbackSong(song, context)
         }
+
+        val fullQueue = baseQueue.map { if (it.id == song.id) targetSong else it }
 
         _currentSong.value = targetSong
         _queue.value = fullQueue

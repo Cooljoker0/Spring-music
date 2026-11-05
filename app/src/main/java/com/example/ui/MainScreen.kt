@@ -447,7 +447,7 @@ fun MainScreen() {
     if (updateAvailable != null) {
         AppUpdateDialog(
             updateInfo = updateAvailable!!,
-            onDismiss = { AppUpdateManager.dismissUpdate() }
+            onDismiss = { AppUpdateManager.dismissUpdate(context, updateAvailable?.versionCode) }
         )
     }
 }
