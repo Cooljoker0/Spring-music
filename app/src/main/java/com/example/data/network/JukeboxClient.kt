@@ -24,8 +24,8 @@ object JukeboxClient {
 
     private val httpClient: OkHttpClient by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(5, TimeUnit.SECONDS)
-            .readTimeout(8, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(35, TimeUnit.SECONDS)
             .followRedirects(true)
             .build()
     }
@@ -57,36 +57,144 @@ object JukeboxClient {
     }
 
     /**
-     * Constructs the official Jukebox /v1/stream URL from alexwohlbruck/jukebox
-     * Supports both direct track/artist streaming and Spotify Track ID resolution
+     * Data class matching Jukebox GET /v1/metadata response from alexwohlbruck/jukebox
+     */
+    data class JukeboxTrackMetadata(
+        val spotifyTrackId: String,
+        val artist: String,
+        val track: String,
+        val album: String?,
+        val artwork: String?,
+        val durationMs: Long
+    )
+
+    /**
+     * Constructs the official Jukebox /v1/stream URL from alexwohlbruck/jukebox.
+     * Supports:
+     * - Direct artist & track query
+     * - 22-character Spotify Track ID resolution
+     * - Optional startMs (in milliseconds, up to 6 hours) for live server-side seeking
+     * - Optional requestedAtMs (13-digit Unix timestamp) to compensate for decoder/network latency
      */
     fun buildStreamUrl(
         title: String,
         artist: String,
         spotifyTrackId: String? = null,
+        startMs: Long? = null,
+        requestedAtMs: Long? = null,
         context: Context? = null
     ): String {
         val base = getServerUrl(context)
-        return if (!spotifyTrackId.isNullOrBlank()) {
-            val encodedId = URLEncoder.encode(spotifyTrackId.trim(), StandardCharsets.UTF_8.toString())
-            "$base/v1/stream?spotifyTrackId=$encodedId"
+        val params = StringBuilder()
+
+        val cleanSpotifyId = spotifyTrackId?.trim()?.takeIf { it.length == 22 && it.matches(Regex("^[A-Za-z0-9]{22}$")) }
+
+        if (!cleanSpotifyId.isNullOrBlank()) {
+            val encodedId = URLEncoder.encode(cleanSpotifyId, StandardCharsets.UTF_8.toString())
+            params.append("spotifyTrackId=").append(encodedId)
         } else {
             val cleanTitle = cleanTrackQuery(title)
             val cleanArtist = cleanArtistQuery(artist)
             val encTitle = URLEncoder.encode(cleanTitle, StandardCharsets.UTF_8.toString())
             val encArtist = URLEncoder.encode(cleanArtist, StandardCharsets.UTF_8.toString())
-            "$base/v1/stream?artist=$encArtist&track=$encTitle"
+            params.append("artist=").append(encArtist).append("&track=").append(encTitle)
+        }
+
+        if (startMs != null && startMs > 0L) {
+            val safeStartMs = startMs.coerceIn(0L, 6L * 60 * 60 * 1000) // Max 6 hours supported by Jukebox
+            params.append("&startMs=").append(safeStartMs)
+            val nowMs = requestedAtMs ?: System.currentTimeMillis()
+            params.append("&requestedAtMs=").append(nowMs)
+        }
+
+        return "$base/v1/stream?$params"
+    }
+
+    /**
+     * Fetches metadata for a Spotify Track ID via Jukebox GET /v1/metadata
+     */
+    suspend fun getMetadata(spotifyTrackId: String, context: Context? = null): JukeboxTrackMetadata? = withContext(Dispatchers.IO) {
+        val cleanId = spotifyTrackId.trim()
+        if (cleanId.length != 22) return@withContext null
+        val base = getServerUrl(context)
+        val url = "$base/v1/metadata?spotifyTrackId=${URLEncoder.encode(cleanId, StandardCharsets.UTF_8.toString())}"
+
+        try {
+            val req = Request.Builder()
+                .url(url)
+                .header("User-Agent", "SpringMusic/9.1 (Android)")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = resp.body?.string().orEmpty()
+                if (body.isBlank()) return@withContext null
+                val json = org.json.JSONObject(body)
+                JukeboxTrackMetadata(
+                    spotifyTrackId = json.optString("spotifyTrackId", cleanId),
+                    artist = json.optString("artist", "Unknown Artist"),
+                    track = json.optString("track", "Unknown Track"),
+                    album = json.optString("album").takeIf { it.isNotBlank() },
+                    artwork = json.optString("artwork").takeIf { it.isNotBlank() },
+                    durationMs = json.optLong("durationMs", 180000L)
+                )
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    /**
+     * Resolves the exact YouTube video URL that Jukebox stream would transcode
+     * via GET /v1/debug/resolve (from alexwohlbruck/jukebox)
+     */
+    suspend fun resolveSourceUrl(
+        title: String,
+        artist: String,
+        spotifyTrackId: String? = null,
+        context: Context? = null
+    ): String? = withContext(Dispatchers.IO) {
+        val base = getServerUrl(context)
+        val cleanSpotifyId = spotifyTrackId?.trim()?.takeIf { it.length == 22 && it.matches(Regex("^[A-Za-z0-9]{22}$")) }
+        val query = if (!cleanSpotifyId.isNullOrBlank()) {
+            "spotifyTrackId=${URLEncoder.encode(cleanSpotifyId, StandardCharsets.UTF_8.toString())}"
+        } else {
+            val encTitle = URLEncoder.encode(cleanTrackQuery(title), StandardCharsets.UTF_8.toString())
+            val encArtist = URLEncoder.encode(cleanArtistQuery(artist), StandardCharsets.UTF_8.toString())
+            "artist=$encArtist&track=$encTitle"
+        }
+
+        try {
+            val req = Request.Builder()
+                .url("$base/v1/debug/resolve?$query")
+                .header("User-Agent", "SpringMusic/9.1 (Android)")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = resp.body?.string().orEmpty()
+                val json = org.json.JSONObject(body)
+                json.optString("url").takeIf { it.isNotBlank() }
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
     /**
      * Creates a fallback Jukebox song instance when JioSaavn fails or is unplayable
      */
-    fun createJukeboxFallbackSong(song: Song, context: Context? = null): Song {
+    fun createJukeboxFallbackSong(
+        song: Song,
+        startMs: Long? = null,
+        context: Context? = null
+    ): Song {
         val fallbackUrl = buildStreamUrl(
             title = song.title,
             artist = song.artist,
             spotifyTrackId = song.spotifyId,
+            startMs = startMs,
+            requestedAtMs = System.currentTimeMillis(),
             context = context
         )
         return song.copy(

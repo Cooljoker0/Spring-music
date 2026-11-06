@@ -9,6 +9,7 @@ import com.example.data.local.UserPlaylistEntity
 import com.example.data.model.AudioQuality
 import com.example.data.model.Playlist
 import com.example.data.model.Song
+import com.example.data.network.JioSaavnDirectEngine
 import com.example.data.network.JukeboxClient
 import com.example.data.network.NetworkClient
 import com.example.data.network.PresetCatalog
@@ -111,28 +112,50 @@ class MusicRepository(
 
     suspend fun searchSongs(query: String, moodTag: String = "Spring Vibe"): List<Song> = withContext(Dispatchers.IO) {
         try {
+            // Priority 1: Direct JioSaavn API with decrypted high-speed 320kbps CDN audio
+            val directSongs = JioSaavnDirectEngine.searchSongs(query, moodTag)
+            if (directSongs.isNotEmpty()) {
+                return@withContext directSongs
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MusicRepository", "JioSaavnDirectEngine search error: ${e.message}")
+        }
+
+        try {
+            // Priority 2: Secondary NetworkClient proxy
             val response = NetworkClient.apiService.searchSongs(query)
             val songs = response.data?.results?.map { dto ->
                 NetworkClient.mapSongDtoToDomain(dto, moodTag)
             } ?: emptyList()
 
-            if (songs.isNotEmpty()) songs else fallbackSearch(query)
-        } catch (e: Exception) {
-            fallbackSearch(query)
-        }
+            if (songs.isNotEmpty()) return@withContext songs
+        } catch (_: Exception) {}
+
+        fallbackSearch(query)
     }
 
     suspend fun searchPlaylists(query: String): List<Playlist> = withContext(Dispatchers.IO) {
         try {
+            // Priority 1: Direct JioSaavn Playlists
+            val directPlaylists = JioSaavnDirectEngine.searchPlaylists(query)
+            if (directPlaylists.isNotEmpty()) {
+                return@withContext directPlaylists
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MusicRepository", "JioSaavnDirectEngine playlist error: ${e.message}")
+        }
+
+        try {
+            // Priority 2: Secondary NetworkClient proxy
             val response = NetworkClient.apiService.searchPlaylists(query)
             val playlists = response.data?.results?.map { dto ->
                 NetworkClient.mapPlaylistDtoToDomain(dto)
             } ?: emptyList()
 
-            if (playlists.isNotEmpty()) playlists else emptyList()
-        } catch (e: Exception) {
-            emptyList()
-        }
+            if (playlists.isNotEmpty()) return@withContext playlists
+        } catch (_: Exception) {}
+
+        emptyList()
     }
 
     suspend fun getPlaylistDetails(playlistId: String): Playlist = withContext(Dispatchers.IO) {
@@ -154,7 +177,15 @@ class MusicRepository(
         val preset = PresetCatalog.PRESET_PLAYLISTS.find { it.id == playlistId }
         if (preset != null) return@withContext preset
 
-        // Query remote API
+        // Query direct JioSaavn API
+        try {
+            val direct = JioSaavnDirectEngine.getPlaylistDetails(playlistId)
+            if (direct != null && direct.songs.isNotEmpty()) {
+                return@withContext direct
+            }
+        } catch (_: Exception) {}
+
+        // Query secondary API
         try {
             val response = NetworkClient.apiService.getPlaylistDetail(playlistId)
             val data = response.data
@@ -164,7 +195,7 @@ class MusicRepository(
                 } ?: emptyList()
 
                 val title = data.name ?: data.title ?: "Playlist"
-                Playlist(
+                return@withContext Playlist(
                     id = data.id ?: playlistId,
                     title = title,
                     subtitle = "${songs.size} songs",
@@ -172,12 +203,10 @@ class MusicRepository(
                     songCount = songs.size,
                     songs = songs
                 )
-            } else {
-                Playlist(id = playlistId, title = "Playlist", subtitle = "0 songs", coverUrl = "", songCount = 0, songs = emptyList())
             }
-        } catch (e: Exception) {
-            Playlist(id = playlistId, title = "Playlist", subtitle = "0 songs", coverUrl = "", songCount = 0, songs = emptyList())
-        }
+        } catch (_: Exception) {}
+
+        Playlist(id = playlistId, title = "Playlist", subtitle = "0 songs", coverUrl = "", songCount = 0, songs = emptyList())
     }
 
     suspend fun importSpotifyPlaylist(
@@ -216,14 +245,23 @@ class MusicRepository(
 
                     var sourceEngine = "jiosaavn"
                     try {
-                        val searchRes = NetworkClient.apiService.searchSongs("${track.title} ${track.artist}")
-                        val firstMatch = searchRes.data?.results?.firstOrNull()
+                        val searchRes = JioSaavnDirectEngine.searchSongs("${track.title} ${track.artist}")
+                        val firstMatch = searchRes.firstOrNull()
                         if (firstMatch != null) {
-                            val domainSong = NetworkClient.mapSongDtoToDomain(firstMatch, "Spring Import")
-                            streamUrl = domainSong.audioUrl
-                            if (coverUrl.isBlank()) coverUrl = domainSong.coverUrl
-                            audioQualities = domainSong.qualityList
+                            streamUrl = firstMatch.audioUrl
+                            if (coverUrl.isBlank()) coverUrl = firstMatch.coverUrl
+                            audioQualities = firstMatch.qualityList
                             sourceEngine = "jiosaavn"
+                        } else {
+                            val legacyRes = NetworkClient.apiService.searchSongs("${track.title} ${track.artist}")
+                            val legacyMatch = legacyRes.data?.results?.firstOrNull()
+                            if (legacyMatch != null) {
+                                val domainSong = NetworkClient.mapSongDtoToDomain(legacyMatch, "Spring Import")
+                                streamUrl = domainSong.audioUrl
+                                if (coverUrl.isBlank()) coverUrl = domainSong.coverUrl
+                                audioQualities = domainSong.qualityList
+                                sourceEngine = "jiosaavn"
+                            }
                         }
                     } catch (_: Exception) {}
 
@@ -389,7 +427,22 @@ class MusicRepository(
     }
 
     private fun fallbackSearch(query: String): List<Song> {
-        return emptyList()
+        val cleanQuery = query.trim()
+        if (cleanQuery.isBlank()) return emptyList()
+        val streamUrl = JukeboxClient.buildStreamUrl(cleanQuery, "Spring Fallback", context = context)
+        return listOf(
+            Song(
+                id = "jb_${System.currentTimeMillis()}",
+                title = cleanQuery.replaceFirstChar { it.uppercase() },
+                artist = "Spring Fallback",
+                album = "Direct Stream",
+                coverUrl = "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500&q=80",
+                audioUrl = streamUrl,
+                durationMs = 210000L,
+                mood = "Spring",
+                sourceEngine = "jukebox"
+            )
+        )
     }
 
     private fun serializeSongsJson(songs: List<Song>): String {

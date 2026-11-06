@@ -50,8 +50,8 @@ object MediaCacheManager {
             val httpDataSourceFactory: DataSource.Factory = DefaultHttpDataSource.Factory()
                 .setUserAgent("Mozilla/5.0 (Linux; Android 14; Pixel 8 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36")
                 .setDefaultRequestProperties(defaultHeaders)
-                .setConnectTimeoutMs(10000)
-                .setReadTimeoutMs(15000)
+                .setConnectTimeoutMs(20000)
+                .setReadTimeoutMs(35000)
                 .setAllowCrossProtocolRedirects(true)
 
             cacheDataSourceFactory = CacheDataSource.Factory()

@@ -60,7 +60,7 @@ object SpotifyImporter {
                 val req = Request.Builder().url(trimmed).head().build()
                 val resp = httpClient.newCall(req).execute()
                 val finalUrl = resp.request.url.toString()
-                if (finalUrl.contains("/playlist/")) {
+                if (finalUrl.contains("/playlist/") || finalUrl.contains("/track/")) {
                     trimmed = finalUrl
                 }
             } catch (_: Exception) {}
@@ -70,7 +70,26 @@ object SpotifyImporter {
         if (urlMatch != null) return urlMatch.groupValues[1]
 
         val uriMatch = Regex("""spotify:playlist:([A-Za-z0-9]+)""").find(trimmed)
-        return uriMatch?.groupValues?.get(1)
+        if (uriMatch != null) return uriMatch.groupValues[1]
+
+        // If user pasted a 22-character Spotify ID directly
+        if (trimmed.length == 22 && trimmed.matches(Regex("^[A-Za-z0-9]{22}$"))) {
+            return trimmed
+        }
+
+        return null
+    }
+
+    fun parseTrackId(rawUrl: String): String? {
+        val trimmed = rawUrl.trim()
+        val urlMatch = Regex("""(?:open\.spotify\.com|spotify\.com)/track/([A-Za-z0-9]+)""").find(trimmed)
+        if (urlMatch != null) return urlMatch.groupValues[1]
+        val uriMatch = Regex("""spotify:track:([A-Za-z0-9]+)""").find(trimmed)
+        if (uriMatch != null) return uriMatch.groupValues[1]
+        if (trimmed.length == 22 && trimmed.matches(Regex("^[A-Za-z0-9]{22}$"))) {
+            return trimmed
+        }
+        return null
     }
 
     private fun collectTracks(value: Any?, found: MutableList<SpotifyImportedTrack>, seen: MutableSet<String>) {
@@ -278,6 +297,27 @@ object SpotifyImporter {
         }
 
         if (allFound.isEmpty()) {
+            // Check if the URL was a single track (or 22-char ID) and resolve via Jukebox metadata
+            val singleTrackId = parseTrackId(url)
+            if (!singleTrackId.isNullOrBlank()) {
+                val jbMeta = JukeboxClient.getMetadata(singleTrackId)
+                if (jbMeta != null) {
+                    val singleTrack = SpotifyImportedTrack(
+                        id = jbMeta.spotifyTrackId,
+                        title = jbMeta.track,
+                        artist = jbMeta.artist,
+                        album = jbMeta.album ?: "Single",
+                        cover = jbMeta.artwork.orEmpty(),
+                        durationMs = jbMeta.durationMs
+                    )
+                    return@withContext SpotifyImportResult(
+                        title = "${jbMeta.track} - Single",
+                        thumbnail = jbMeta.artwork.orEmpty(),
+                        playlistUrl = playlistUrl,
+                        tracks = listOf(singleTrack)
+                    )
+                }
+            }
             throw IllegalStateException("Unable to expose the track list. The playlist may be private or unavailable.")
         }
 

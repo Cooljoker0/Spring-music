@@ -156,7 +156,7 @@ class PlayerManager(private val context: Context) {
                 "JioSaavn stream not playable for \"${failedSong.title}\" (${error?.errorCodeName}). Routing to Jukebox fallback stream..."
             )
 
-            val jukeboxSong = JukeboxClient.createJukeboxFallbackSong(failedSong, context)
+            val jukeboxSong = JukeboxClient.createJukeboxFallbackSong(failedSong, context = context)
             _currentSong.value = jukeboxSong
             val updatedQueue = _queue.value.map { if (it.id == failedSong.id) jukeboxSong else it }
             _queue.value = updatedQueue
@@ -268,9 +268,8 @@ class PlayerManager(private val context: Context) {
         val targetSong = if (song.effectivePlayableUri.isNotBlank()) {
             song
         } else {
-            // JioSaavn has no stream, route directly to Jukebox fallback
-            android.util.Log.i("PlayerManager", "No JioSaavn stream for \"${song.title}\". Routing to Jukebox...")
-            JukeboxClient.createJukeboxFallbackSong(song, context)
+            val jukeboxSong = JukeboxClient.createJukeboxFallbackSong(song, context = context)
+            jukeboxSong
         }
 
         val fullQueue = baseQueue.map { if (it.id == song.id) targetSong else it }
@@ -322,8 +321,34 @@ class PlayerManager(private val context: Context) {
 
     fun seekTo(positionMs: Long) {
         val player = getActivePlayer() ?: return
-        player.seekTo(positionMs)
-        _currentPositionMs.value = positionMs
+        val current = _currentSong.value
+
+        // For live Jukebox transcoding streams, client-side byte seeking is not supported
+        // because the stream is dynamically generated via chunked transfer without Content-Length.
+        // We use Jukebox's official startMs & requestedAtMs parameters to reconnect from the target offset!
+        if (current != null && current.isJukeboxEngine && current.localFilePath.isNullOrBlank()) {
+            _currentPositionMs.value = positionMs
+            scope.launch {
+                val updatedSong = JukeboxClient.createJukeboxFallbackSong(current, startMs = positionMs, context = context)
+                _currentSong.value = updatedSong
+                val updatedQueue = _queue.value.map { if (it.id == current.id) updatedSong else it }
+                _queue.value = updatedQueue
+                try {
+                    player.stop()
+                    val targetIndex = updatedQueue.indexOfFirst { it.id == updatedSong.id }.coerceAtLeast(0)
+                    player.setMediaItems(updatedQueue.map { it.toMediaItem() }, targetIndex, 0L)
+                    player.prepare()
+                    player.play()
+                    _isPlaying.value = true
+                    startProgressTracking()
+                } catch (e: Exception) {
+                    player.seekTo(positionMs)
+                }
+            }
+        } else {
+            player.seekTo(positionMs)
+            _currentPositionMs.value = positionMs
+        }
     }
 
     fun skipNext() {
