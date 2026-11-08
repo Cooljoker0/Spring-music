@@ -267,11 +267,12 @@ fun MiniPlayer(
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .testTag("mini_player")
             .clickable { onClick() },
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(12.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x30FFFFFF)),
         colors = CardDefaults.cardColors(
-            containerColor = SpotifyMiniPlayer
+            containerColor = Color(0xF2222222)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(

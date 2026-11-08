@@ -42,6 +42,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -129,10 +131,11 @@ fun SettingsScreen(
     val updateAvailable by AppUpdateManager.updateAvailable.collectAsState()
 
     var showPusherCard by remember { mutableStateOf(false) }
-    var pushVersionName by remember { mutableStateOf("9.1") }
+    var pushVersionName by remember { mutableStateOf("9.5") }
     var pushVersionCode by remember { mutableStateOf((AppUpdateManager.currentVersionCode + 1).toString()) }
     var pushDownloadUrl by remember { mutableStateOf("") }
     var pushChangelog by remember { mutableStateOf("New features, bug fixes, and audio quality improvements.") }
+    var skipUrlProbe by remember { mutableStateOf(false) }
     var isPushingUpdate by remember { mutableStateOf(false) }
     var pushFeedbackMsg by remember { mutableStateOf<String?>(null) }
     var isProbingUrl by remember { mutableStateOf(false) }
@@ -1166,22 +1169,28 @@ fun SettingsScreen(
                             // Informational Guide Card on Google Drive & GitHub
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(10.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF161F1A)),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.3f))
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF141E18)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.35f))
                             ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
+                                Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
-                                        text = "Why do 404 errors happen?",
+                                        text = "Which APK Link is Needed to Push Updates?",
                                         color = primaryColor,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold
                                     )
-                                    Spacer(modifier = Modifier.height(3.dp))
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "• GitHub: Repository MUST be Public! If the repo is Private, GitHub blocks anonymous downloads and returns HTTP 404.\n" +
-                                                "• Tag format: GitHub releases usually require 'v' in the tag (e.g. /download/v9.3.1/app-debug.apk).\n" +
-                                                "• Google Drive (Recommended): Upload the APK, set access to 'Anyone with the link can view', and paste the link here. The app converts it to direct download automatically!",
+                                        text = "• MUST USE app-debug.apk:\n" +
+                                                "  Android requires matching signatures to update an installed app. Since this app was installed with the debug key, pushing release.apk will trigger 'App not installed / Signature mismatch'. Always upload and push app-debug.apk.\n\n" +
+                                                "• GitHub Link Format:\n" +
+                                                "  Must be the direct asset download URL from GitHub Releases:\n" +
+                                                "  https://github.com/<owner>/<repo>/releases/download/<tag>/app-debug.apk\n\n" +
+                                                "• Public Repo Required:\n" +
+                                                "  Your GitHub repository MUST be Public. Private repos block anonymous downloads and return HTTP 404 to user devices.\n\n" +
+                                                "• Google Drive Alternative:\n" +
+                                                "  Upload app-debug.apk to Google Drive -> Share -> 'Anyone with the link can view' -> Paste link. Auto-direct download is supported!",
                                         color = SpotifyTextSecondary,
                                         fontSize = 11.sp,
                                         lineHeight = 15.sp
@@ -1204,6 +1213,32 @@ fun SettingsScreen(
                                     unfocusedTextColor = SpotifyTextPrimary
                                 )
                             )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { skipUrlProbe = !skipUrlProbe }
+                                    .padding(vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Checkbox(
+                                    checked = skipUrlProbe,
+                                    onCheckedChange = { skipUrlProbe = it },
+                                    colors = CheckboxDefaults.colors(
+                                        checkedColor = primaryColor,
+                                        checkmarkColor = Color.Black,
+                                        uncheckedColor = SpotifyTextSecondary
+                                    )
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Skip link reachability probe (Force Broadcast)",
+                                    color = SpotifyTextPrimary,
+                                    fontSize = 11.sp
+                                )
+                            }
 
                             if (pushFeedbackMsg != null) {
                                 Spacer(modifier = Modifier.height(8.dp))
@@ -1232,7 +1267,8 @@ fun SettingsScreen(
                                             versionCode = code,
                                             versionName = pushVersionName,
                                             downloadUrl = pushDownloadUrl,
-                                            changelog = pushChangelog
+                                            changelog = pushChangelog,
+                                            skipUrlProbe = skipUrlProbe
                                         )
                                         isPushingUpdate = false
                                         pushFeedbackMsg = result.fold(

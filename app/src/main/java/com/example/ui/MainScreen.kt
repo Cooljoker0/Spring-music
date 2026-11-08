@@ -47,6 +47,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -264,18 +265,36 @@ fun MainScreen() {
                     }
                 }
 
-                // Floating Transparent Dock
+                // Floating Frosted Glass / Blur Acrylic Dock
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 12.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 10.dp)
                         .navigationBarsPadding()
+                        .shadow(
+                            elevation = 16.dp,
+                            shape = RoundedCornerShape(32.dp),
+                            ambientColor = Color.Black.copy(alpha = 0.7f),
+                            spotColor = Color.Black.copy(alpha = 0.7f)
+                        )
                         .clip(RoundedCornerShape(32.dp))
-                        .background(Color.Transparent)
+                        .background(
+                            Brush.verticalGradient(
+                                listOf(
+                                    Color(0xD9222222),
+                                    Color(0xEB121212)
+                                )
+                            )
+                        )
                         .border(
-                            1.dp,
-                            Color(0x35FFFFFF),
-                            RoundedCornerShape(32.dp)
+                            width = 1.dp,
+                            brush = Brush.verticalGradient(
+                                listOf(
+                                    Color(0x60FFFFFF),
+                                    Color(0x18FFFFFF)
+                                )
+                            ),
+                            shape = RoundedCornerShape(32.dp)
                         )
                         .testTag("spotify_floating_dock")
                 ) {

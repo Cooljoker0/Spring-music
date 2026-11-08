@@ -14,7 +14,7 @@ import retrofit2.converter.moshi.MoshiConverterFactory
 import java.util.concurrent.TimeUnit
 
 object NetworkClient {
-    private const val BASE_URL = "https://api-v2.appdeploy.ai/app/spring-fqiz24/"
+    private const val BASE_URL = "https://spring-fqiz24.v2.appdeploy.ai/"
 
     private val okHttpClient: OkHttpClient by lazy {
         val logging = HttpLoggingInterceptor().apply {

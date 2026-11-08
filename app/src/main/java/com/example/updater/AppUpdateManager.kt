@@ -283,6 +283,64 @@ object AppUpdateManager {
         return trimmed
     }
 
+    /**
+     * Attempts to resolve a GitHub release page (tag or latest) to a direct .apk download asset URL.
+     */
+    suspend fun resolveGithubReleaseApk(url: String): String? = withContext(Dispatchers.IO) {
+        val trimmed = url.trim()
+        val tagRegex = Regex("""github\.com/([^/]+)/([^/]+)/releases/tag/([^/?#]+)""")
+        val latestRegex = Regex("""github\.com/([^/]+)/([^/]+)/releases(?:/latest)?/?$""")
+
+        val (owner, repo, tag) = when {
+            tagRegex.containsMatchIn(trimmed) -> {
+                val match = tagRegex.find(trimmed)!!
+                Triple(match.groupValues[1], match.groupValues[2], match.groupValues[3])
+            }
+            latestRegex.containsMatchIn(trimmed) -> {
+                val match = latestRegex.find(trimmed)!!
+                Triple(match.groupValues[1], match.groupValues[2], "latest")
+            }
+            else -> return@withContext null
+        }
+
+        try {
+            val apiUrl = if (tag == "latest") {
+                "https://api.github.com/repos/$owner/$repo/releases/latest"
+            } else {
+                "https://api.github.com/repos/$owner/$repo/releases/tags/$tag"
+            }
+
+            val request = Request.Builder()
+                .url(apiUrl)
+                .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) Chrome/128.0.0.0 Mobile SpringMusic/${currentVersionName}")
+                .addHeader("Accept", "application/vnd.github.v3+json")
+                .build()
+
+            httpClient.newCall(request).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext null
+                val body = resp.body?.string() ?: return@withContext null
+                val json = org.json.JSONObject(body)
+                val assets = json.optJSONArray("assets") ?: return@withContext null
+                var fallbackApkUrl: String? = null
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    val name = asset.optString("name", "")
+                    val downloadUrl = asset.optString("browser_download_url", "")
+                    if (name.endsWith(".apk", ignoreCase = true)) {
+                        // Strongly prefer debug build because installed app is signed with debug keystore!
+                        if (name.contains("debug", ignoreCase = true)) {
+                            return@withContext downloadUrl
+                        }
+                        fallbackApkUrl = downloadUrl
+                    }
+                }
+                return@withContext fallbackApkUrl
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
     fun openInBrowser(context: Context, url: String) {
         val browserUrl = getBrowserFriendlyUrl(url)
         try {
@@ -652,24 +710,61 @@ object AppUpdateManager {
     }
 
     /**
-     * Probes a download URL to test if it is valid and publicly reachable (not returning 404).
+     * Probes an APK download URL to verify reachability and provide clear troubleshooting.
+     * Supports Google Drive, GitHub Releases, direct CDNs, and custom web servers.
      */
     suspend fun probeUrl(url: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
         val trimmed = url.trim()
         if (trimmed.isBlank() || (!trimmed.startsWith("http://", ignoreCase = true) && !trimmed.startsWith("https://", ignoreCase = true))) {
             return@withContext Pair(false, "Invalid link: URL must begin with https:// or http://")
         }
-        val targetUrl = normalizeDownloadUrl(trimmed)
+
+        var effectiveUrl = trimmed
+        if (trimmed.contains("github.com", ignoreCase = true) && !trimmed.contains("/download/") && !trimmed.contains("/raw/")) {
+            val resolved = resolveGithubReleaseApk(trimmed)
+            if (resolved != null) {
+                effectiveUrl = resolved
+            } else if (trimmed.endsWith(".git", ignoreCase = true) || !trimmed.contains("/releases")) {
+                return@withContext Pair(
+                    false,
+                    "GitHub Link Notice: You entered a repository link ($trimmed).\n\n" +
+                    "To broadcast from GitHub, use the direct download link to app-debug.apk under Releases:\n" +
+                    "https://github.com/OWNER/REPO/releases/download/TAG/app-debug.apk\n\n" +
+                    "Tip: You can also paste the release tag page (e.g. .../releases/tag/v9.4) and Spring Music will auto-detect the APK!"
+                )
+            }
+        }
+
+        val driveId = extractGoogleDriveId(effectiveUrl)
+        val testUrl = if (driveId != null) {
+            "https://drive.usercontent.google.com/download?id=$driveId&export=download&confirm=t"
+        } else {
+            normalizeDownloadUrl(effectiveUrl)
+        }
+
         try {
             val request = Request.Builder()
-                .url(targetUrl)
-                .header("Range", "bytes=0-10")
-                .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) Chrome/128.0.0.0 Mobile SpringMusic/${currentVersionName}")
+                .url(testUrl)
+                .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) Chrome/128.0.0.0 Mobile SpringMusic/${currentVersionName}")
+                .addHeader("Accept", "*/*")
+                .head()
                 .build()
-            val response = httpClient.newCall(request).execute()
+
+            var response = httpClient.newCall(request).execute()
+            if (response.code == 405 || response.code == 403 || response.code == 400) {
+                // Some servers reject HEAD requests; fallback to a 1-byte GET range probe
+                val getRequest = Request.Builder()
+                    .url(testUrl)
+                    .addHeader("User-Agent", "Mozilla/5.0 (Linux; Android 14) Chrome/128.0.0.0 Mobile SpringMusic/${currentVersionName}")
+                    .addHeader("Range", "bytes=0-1024")
+                    .get()
+                    .build()
+                response = httpClient.newCall(getRequest).execute()
+            }
+
             val finalHost = response.request.url.host
             val finalUrlStr = response.request.url.toString()
-            val isDrive = trimmed.contains("drive.google.com") || trimmed.contains("drive.usercontent")
+            val isDrive = effectiveUrl.contains("drive.google.com") || effectiveUrl.contains("drive.usercontent")
 
             if (finalHost.contains("accounts.google.com") || finalUrlStr.contains("ServiceLogin") || finalUrlStr.contains("signin") || (isDrive && (response.code == 401 || response.code == 403))) {
                 return@withContext Pair(
@@ -684,26 +779,31 @@ object AppUpdateManager {
             }
 
             if (response.code == 404) {
-                val isGithub = trimmed.contains("github.com", ignoreCase = true)
+                val isGithub = effectiveUrl.contains("github.com", ignoreCase = true)
                 val msg = if (isGithub) {
-                    "HTTP 404 Not Found: The file was not found on GitHub.\n" +
-                    "• The GitHub repository may be Private (GitHub blocks public downloads from private repos).\n" +
-                    "• The release tag or file name might not match (e.g. check if tag needs 'v' prefix like 'v9.3.1').\n" +
-                    "• The asset 'app-debug.apk' was not uploaded.\n" +
-                    "Tip: You can upload your APK to Google Drive, set access to 'Anyone with the link', and paste that link instead!"
+                    "HTTP 404 Not Found on GitHub:\n" +
+                    "• Is the GitHub repo Public? (Private repo downloads require authentication and return 404).\n" +
+                    "• Check the release tag name (e.g., does it need 'v' prefix like 'v9.1'?)\n" +
+                    "• Make sure 'app-debug.apk' was actually uploaded under this release."
                 } else {
-                    "HTTP 404 Not Found: The file does not exist on this server. Check your link or use Google Drive."
+                    "HTTP 404 Not Found: The file does not exist at this link. Please check your URL."
                 }
                 return@withContext Pair(false, msg)
             } else if (response.code in 200..399) {
-                return@withContext Pair(true, "✓ URL is active and reachable (HTTP ${response.code})")
+                val successMsg = if (effectiveUrl != trimmed) {
+                    "✓ Resolved GitHub APK ($testUrl) is active & accessible (HTTP ${response.code})"
+                } else {
+                    "✓ Download link is active and accessible (HTTP ${response.code})"
+                }
+                return@withContext Pair(true, successMsg)
             } else {
                 return@withContext Pair(false, "Server returned HTTP ${response.code}")
             }
         } catch (e: Exception) {
-            return@withContext Pair(false, "Connection check failed: ${e.message}")
+            return@withContext Pair(false, "Connection check: ${e.message ?: "Failed to reach server"}")
         }
     }
+
 
     /**
      * Broadcast an update to all installed phones over-the-air.
@@ -717,11 +817,22 @@ object AppUpdateManager {
         skipUrlProbe: Boolean = false
     ): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            val trimmedUrl = downloadUrl.trim()
-            if (trimmedUrl.endsWith(".git", ignoreCase = true) || (trimmedUrl.contains("github.com") && !trimmedUrl.contains("/download/") && !trimmedUrl.contains("/raw/"))) {
-                return@withContext Result.failure(
-                    IllegalArgumentException("You entered a GitHub repository link ($trimmedUrl). An APK download link must be a direct link to the .apk file, such as from GitHub Releases or Google Drive.")
-                )
+            var trimmedUrl = downloadUrl.trim()
+            if (trimmedUrl.isBlank()) {
+                return@withContext Result.failure(IllegalArgumentException("Please enter an APK download link"))
+            }
+
+            if (trimmedUrl.contains("github.com", ignoreCase = true) && !trimmedUrl.contains("/download/") && !trimmedUrl.contains("/raw/")) {
+                val resolved = resolveGithubReleaseApk(trimmedUrl)
+                if (resolved != null) {
+                    trimmedUrl = resolved
+                } else if (trimmedUrl.endsWith(".git", ignoreCase = true) || !trimmedUrl.contains("/releases")) {
+                    return@withContext Result.failure(
+                        IllegalArgumentException(
+                            "You entered a GitHub repository link ($trimmedUrl). An update broadcast requires a direct link to the APK file in GitHub Releases (e.g. https://github.com/USER/REPO/releases/download/v9.1/app-debug.apk) or Google Drive."
+                        )
+                    )
+                }
             }
 
             // Probe URL before broadcasting unless explicitly skipped
@@ -736,17 +847,27 @@ object AppUpdateManager {
 
             val data = hashMapOf(
                 "versionCode" to versionCode,
-                "versionName" to versionName,
+                "versionName" to versionName.trim(),
                 "downloadUrl" to trimmedUrl,
-                "changelog" to changelog.trim(),
+                "changelog" to changelog.trim().ifBlank { "Performance improvements and bug fixes." },
                 "isMandatory" to isMandatory,
                 "publishedAt" to System.currentTimeMillis()
             )
 
-            // Save to latest document (which all phones listen to)
+            // Save to 'latest' document (which all installed apps check and listen to)
             firestore.collection("app_updates").document("latest").set(data).awaitTask()
-            // Archive to history document
+            // Archive to historical document
             firestore.collection("app_updates").document("v$versionCode").set(data).awaitTask()
+
+            // Update in-memory state so local device reflects broadcast immediately
+            _updateAvailable.value = AppUpdateInfo(
+                versionCode = versionCode,
+                versionName = versionName,
+                downloadUrl = trimmedUrl,
+                changelog = changelog,
+                isMandatory = isMandatory
+            )
+
             Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)

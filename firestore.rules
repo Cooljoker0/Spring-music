@@ -115,7 +115,8 @@ service cloud.firestore {
     // Over-the-air app updates (public read, validated write)
     match /app_updates/{updateId} {
       allow read: if true;
-      allow write: if isValidAppUpdate(request.resource.data);
+      allow create, update: if isValidAppUpdate(request.resource.data);
+      allow delete: if true;
     }
   }
 }
