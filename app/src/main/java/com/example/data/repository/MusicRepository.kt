@@ -56,29 +56,83 @@ class MusicRepository(
         _importStatus.value = PlaylistImportStatus()
     }
 
-    fun startBackgroundImport(url: String) {
+    fun startBackgroundImport(urlOrName: String) {
+        if (_importStatus.value.isImporting) return
+        val trimmed = urlOrName.trim()
+        val isUrl = trimmed.startsWith("http://", ignoreCase = true) ||
+                trimmed.startsWith("https://", ignoreCase = true) ||
+                trimmed.contains("spotify.com") ||
+                trimmed.contains("spotify.link") ||
+                trimmed.matches(Regex("^[a-zA-Z0-9]{22}$"))
+
+        if (isUrl) {
+            repositoryScope.launch {
+                _importStatus.value = PlaylistImportStatus(
+                    isImporting = true,
+                    playlistName = "Connecting...",
+                    currentTrack = 0,
+                    totalTracks = 0,
+                    trackTitle = "Fetching playlist tracks..."
+                )
+                try {
+                    val playlist = importSpotifyPlaylist(trimmed)
+                    _importStatus.value = PlaylistImportStatus(
+                        isImporting = false,
+                        playlistName = playlist.title,
+                        currentTrack = playlist.songCount,
+                        totalTracks = playlist.songCount,
+                        completedPlaylist = playlist
+                    )
+                } catch (e: Exception) {
+                    _importStatus.value = PlaylistImportStatus(
+                        isImporting = false,
+                        errorMessage = e.message ?: "Failed to import playlist. Please ensure the playlist is public."
+                    )
+                }
+            }
+        } else {
+            startBackgroundImportByName(trimmed)
+        }
+    }
+
+    fun startBackgroundImportByName(query: String) {
         if (_importStatus.value.isImporting) return
         repositoryScope.launch {
             _importStatus.value = PlaylistImportStatus(
                 isImporting = true,
-                playlistName = "Connecting...",
+                playlistName = query,
                 currentTrack = 0,
                 totalTracks = 0,
-                trackTitle = "Fetching playlist tracks..."
+                trackTitle = "Searching for '$query' playlists..."
             )
             try {
-                val playlist = importSpotifyPlaylist(url)
-                _importStatus.value = PlaylistImportStatus(
-                    isImporting = false,
-                    playlistName = playlist.title,
-                    currentTrack = playlist.songCount,
-                    totalTracks = playlist.songCount,
-                    completedPlaylist = playlist
-                )
+                val matches = searchPlaylists(query)
+                if (matches.isEmpty()) {
+                    _importStatus.value = PlaylistImportStatus(
+                        isImporting = false,
+                        errorMessage = "No playlist found matching '$query'. Try another name or keyword."
+                    )
+                    return@launch
+                }
+                importSearchedPlaylist(matches.first())
             } catch (e: Exception) {
                 _importStatus.value = PlaylistImportStatus(
                     isImporting = false,
-                    errorMessage = e.message ?: "Failed to import playlist. Please ensure the playlist is public."
+                    errorMessage = e.message ?: "Failed to import playlist by name."
+                )
+            }
+        }
+    }
+
+    fun startBackgroundImportPlaylist(playlist: Playlist) {
+        if (_importStatus.value.isImporting) return
+        repositoryScope.launch {
+            try {
+                importSearchedPlaylist(playlist)
+            } catch (e: Exception) {
+                _importStatus.value = PlaylistImportStatus(
+                    isImporting = false,
+                    errorMessage = e.message ?: "Failed to import playlist."
                 )
             }
         }
@@ -134,28 +188,177 @@ class MusicRepository(
         fallbackSearch(query)
     }
 
+    data class CuratedPlaylist(
+        val id: String,
+        val title: String,
+        val subtitle: String,
+        val coverUrl: String,
+        val songCount: Int,
+        val keywords: List<String>
+    )
+
+    private val curatedPlaylists = listOf(
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX5q67ZpWyRrZ",
+            title = "Indie India",
+            subtitle = "The best of the Indian indie scene • 75 songs",
+            coverUrl = "https://image-cdn-fa.spotifycdn.com/image/ab67706f00000002656f14776fbb39aa2ae900f0",
+            songCount = 75,
+            keywords = listOf("indie", "india", "indie india", "hindi indie", "prateek kuhad", "anuv jain")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX0XUfTFmNBRM",
+            title = "Bollywood Butter",
+            subtitle = "Finest modern Bollywood hits • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f00000002f90a980757a3e4307ef19688",
+            songCount = 50,
+            keywords = listOf("bollywood", "butter", "hindi", "arijit", "top bollywood")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DXcBWIGoYBM5M",
+            title = "Today's Top Hits",
+            subtitle = "Hottest tracks worldwide • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f000000029bb644264627d33e5c9a4185",
+            songCount = 50,
+            keywords = listOf("top hits", "today", "global", "english", "pop")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DXdLEN7aqioXM",
+            title = "Chill Lofi Beats",
+            subtitle = "Beats to relax, study, and vibe to • 60 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f00000002bca487b3370f80b2a8d5f308",
+            songCount = 60,
+            keywords = listOf("lofi", "chill", "lo-fi", "study", "relax")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX5cZuAHLNjGz",
+            title = "Punjabi 101",
+            subtitle = "Essential Punjabi chartbusters • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f000000024f2b9637c35ae97d91788267",
+            songCount = 50,
+            keywords = listOf("punjabi", "punjabi 101", "bhangra", "diljit", "sidhu")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX4WYpdgoIcn6",
+            title = "I-Pop Superhits",
+            subtitle = "Biggest Indian Pop songs • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f00000002c918ef8f8eb04a7541662589",
+            songCount = 50,
+            keywords = listOf("ipop", "i-pop", "pop", "indian pop", "darshan raval")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX6MVGQ4S8ZtC",
+            title = "Bollywood Romance",
+            subtitle = "Soulful love melodies • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f00000002b80456209214df9275cb1a5e",
+            songCount = 50,
+            keywords = listOf("romance", "romantic", "love", "bollywood romance", "soulful")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZEVXbMDoHDwVN2tF",
+            title = "Global Top 50",
+            subtitle = "Most played songs around the world • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f00000002a24c58cf3e20d2d3e9c9c34a",
+            songCount = 50,
+            keywords = listOf("global", "top 50", "charts", "trending")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX76Wlfdnj7AP",
+            title = "Workout Energy",
+            subtitle = "Beast mode pump up music • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f000000025f385c7d0d0fbb3298a0c20a",
+            songCount = 50,
+            keywords = listOf("workout", "gym", "energy", "fitness", "motivation")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX3O7zMhH00lP",
+            title = "Desi Hip Hop",
+            subtitle = "South Asian hip hop & underground rap • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f0000000253f937cb68e146eb20199e43",
+            songCount = 50,
+            keywords = listOf("desi hip hop", "rap", "hip hop", "emiway", "divine", "seedhe maut", "krsna")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX14qpQjK0v2E",
+            title = "Tollywood Top 50",
+            subtitle = "Telugu chartbusters • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f000000027f3b89fa5a9ebf5aa7c90b82",
+            songCount = 50,
+            keywords = listOf("tollywood", "telugu", "top telugu", "anirudh", "dsp")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX1i3hvzJpcNu",
+            title = "Kollywood Top 50",
+            subtitle = "Tamil chartbusters • 50 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f0000000201d4a9ec0fefc6cfbf456bf1",
+            songCount = 50,
+            keywords = listOf("kollywood", "tamil", "top tamil", "anirudh", "ar rahman")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX5Ejj0EkURtP",
+            title = "All Out 2010s",
+            subtitle = "The biggest hits of the decade • 75 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f0000000236a28ff7227e7d6cfec390be",
+            songCount = 75,
+            keywords = listOf("2010s", "decade", "nostalgia", "throwback")
+        ),
+        CuratedPlaylist(
+            id = "spotify_37i9dQZF1DX4o1oenSJRJd",
+            title = "All Out 2000s",
+            subtitle = "Defining tracks of the 2000s • 75 songs",
+            coverUrl = "https://i.scdn.co/image/ab67706f00000002e20b327b0365779c1186e246",
+            songCount = 75,
+            keywords = listOf("2000s", "throwback", "retro", "nostalgia")
+        )
+    )
+
     suspend fun searchPlaylists(query: String): List<Playlist> = withContext(Dispatchers.IO) {
+        val qClean = query.trim().lowercase()
+        val combinedResults = mutableListOf<Playlist>()
+        val seenIds = mutableSetOf<String>()
+
+        // 1. Check curated Spotify & Global catalogs
+        val curatedMatches = curatedPlaylists.filter { entry ->
+            entry.title.lowercase().contains(qClean) ||
+                    entry.keywords.any { qClean.contains(it) || it.contains(qClean) }
+        }.map { entry ->
+            Playlist(
+                id = entry.id,
+                title = entry.title,
+                subtitle = entry.subtitle,
+                coverUrl = entry.coverUrl,
+                songCount = entry.songCount,
+                songs = emptyList()
+            )
+        }
+        for (p in curatedMatches) {
+            if (seenIds.add(p.id)) combinedResults.add(p)
+        }
+
+        // 2. Priority: Direct JioSaavn Playlists
         try {
-            // Priority 1: Direct JioSaavn Playlists
             val directPlaylists = JioSaavnDirectEngine.searchPlaylists(query)
-            if (directPlaylists.isNotEmpty()) {
-                return@withContext directPlaylists
+            for (p in directPlaylists) {
+                if (seenIds.add(p.id)) combinedResults.add(p)
             }
         } catch (e: Exception) {
             android.util.Log.e("MusicRepository", "JioSaavnDirectEngine playlist error: ${e.message}")
         }
 
-        try {
-            // Priority 2: Secondary NetworkClient proxy
-            val response = NetworkClient.apiService.searchPlaylists(query)
-            val playlists = response.data?.results?.map { dto ->
-                NetworkClient.mapPlaylistDtoToDomain(dto)
-            } ?: emptyList()
+        // 3. Fallback to secondary network proxy if needed
+        if (combinedResults.isEmpty()) {
+            try {
+                val response = NetworkClient.apiService.searchPlaylists(query)
+                val playlists = response.data?.results?.map { dto ->
+                    NetworkClient.mapPlaylistDtoToDomain(dto)
+                } ?: emptyList()
+                for (p in playlists) {
+                    if (seenIds.add(p.id)) combinedResults.add(p)
+                }
+            } catch (_: Exception) {}
+        }
 
-            if (playlists.isNotEmpty()) return@withContext playlists
-        } catch (_: Exception) {}
-
-        emptyList()
+        combinedResults
     }
 
     suspend fun getPlaylistDetails(playlistId: String): Playlist = withContext(Dispatchers.IO) {
@@ -336,6 +539,57 @@ class MusicRepository(
         )
 
         playlist
+    }
+
+    suspend fun importSearchedPlaylist(playlist: Playlist): Playlist = withContext(Dispatchers.IO) {
+        val isSpotify = playlist.id.startsWith("spotify_") ||
+                playlist.id.startsWith("sp_") ||
+                playlist.id.matches(Regex("^[a-zA-Z0-9]{22}$")) ||
+                playlist.id.contains("spotify.com")
+
+        if (isSpotify) {
+            val spotifyId = playlist.id.removePrefix("spotify_").removePrefix("sp_")
+            val url = if (spotifyId.startsWith("http")) spotifyId else "https://open.spotify.com/playlist/$spotifyId"
+            return@withContext importSpotifyPlaylist(url)
+        }
+
+        _importStatus.value = PlaylistImportStatus(
+            isImporting = true,
+            playlistName = playlist.title,
+            currentTrack = 0,
+            totalTracks = playlist.songCount.coerceAtLeast(1),
+            trackTitle = "Fetching playlist tracks..."
+        )
+        val fullPlaylist = getPlaylistDetails(playlist.id)
+        val songs = if (fullPlaylist.songs.isNotEmpty()) fullPlaylist.songs else playlist.songs
+        val playlistId = "spring_${System.currentTimeMillis()}"
+        val imported = Playlist(
+            id = playlistId,
+            title = fullPlaylist.title.ifBlank { playlist.title },
+            subtitle = "Imported Playlist • ${songs.size} songs",
+            coverUrl = fullPlaylist.coverUrl.ifBlank { playlist.coverUrl.ifBlank { songs.firstOrNull()?.coverUrl.orEmpty() } },
+            songCount = songs.size,
+            songs = songs
+        )
+        val entity = UserPlaylistEntity(
+            id = playlistId,
+            title = imported.title,
+            description = "Imported by name: ${imported.title}",
+            coverUrl = imported.coverUrl,
+            songCount = songs.size,
+            songsJson = serializeSongsJson(songs),
+            isSpotifyImport = true
+        )
+        playlistDao.insertPlaylist(entity)
+        firestoreSyncManager?.savePlaylist(entity)
+        _importStatus.value = PlaylistImportStatus(
+            isImporting = false,
+            playlistName = imported.title,
+            currentTrack = songs.size,
+            totalTracks = songs.size,
+            completedPlaylist = imported
+        )
+        imported
     }
 
     suspend fun createCustomPlaylist(title: String, description: String = ""): Playlist = withContext(Dispatchers.IO) {

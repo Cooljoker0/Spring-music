@@ -11,7 +11,9 @@ import androidx.media3.session.SessionToken
 import com.example.SpringApplication
 import com.example.data.model.AudioQuality
 import com.example.data.model.Song
+import com.example.data.model.SongLyrics
 import com.example.data.network.JukeboxClient
+import com.example.data.network.LyricsService
 import com.example.service.SpringMediaLibraryService
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -58,9 +60,16 @@ class PlayerManager(private val context: Context) {
     private val _sleepTimerMinutes = MutableStateFlow<Int?>(null)
     val sleepTimerMinutes: StateFlow<Int?> = _sleepTimerMinutes.asStateFlow()
 
+    private val _currentLyrics = MutableStateFlow<SongLyrics?>(null)
+    val currentLyrics: StateFlow<SongLyrics?> = _currentLyrics.asStateFlow()
+
+    private val _isLoadingLyrics = MutableStateFlow(false)
+    val isLoadingLyrics: StateFlow<Boolean> = _isLoadingLyrics.asStateFlow()
+
     private var mediaController: MediaController? = null
     private var progressJob: Job? = null
     private var sleepTimerJob: Job? = null
+    private var lyricsJob: Job? = null
     private var lastErrorTimestamp = 0L
     private var lastHandledErrorTimestamp = 0L
     private var lastHandledSongId: String? = null
@@ -283,14 +292,22 @@ class PlayerManager(private val context: Context) {
         val targetSong = if (song.effectivePlayableUri.isNotBlank()) {
             song
         } else {
-            val jukeboxSong = JukeboxClient.createJukeboxFallbackSong(song, context = context)
-            jukeboxSong
+            JukeboxClient.createJukeboxFallbackSong(song, context = context)
         }
 
-        val fullQueue = baseQueue.map { if (it.id == song.id) targetSong else it }
+        val fullQueue = baseQueue.map { s ->
+            if (s.id == song.id) {
+                targetSong
+            } else if (s.effectivePlayableUri.isBlank()) {
+                JukeboxClient.createJukeboxFallbackSong(s, context = context)
+            } else {
+                s
+            }
+        }
 
         _currentSong.value = targetSong
         _queue.value = fullQueue
+        loadLyricsForSong(targetSong)
 
         try {
             val intent = Intent(context, SpringMediaLibraryService::class.java)
@@ -470,6 +487,24 @@ class PlayerManager(private val context: Context) {
                 (context.applicationContext as? SpringApplication)?.repository?.recordPlayed(song)
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    fun loadLyricsForSong(song: Song) {
+        lyricsJob?.cancel()
+        _currentLyrics.value = null
+        lyricsJob = scope.launch {
+            _isLoadingLyrics.value = true
+            try {
+                val lyrics = LyricsService.getLyrics(song)
+                if (_currentSong.value?.id == song.id) {
+                    _currentLyrics.value = lyrics
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("PlayerManager", "Lyrics fetch error: ${e.message}")
+            } finally {
+                _isLoadingLyrics.value = false
             }
         }
     }

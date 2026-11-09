@@ -36,9 +36,15 @@ data class Song(
             .setDescription(mood)
             .build()
 
+        val uriString = if (effectivePlayableUri.isNotBlank()) {
+            effectivePlayableUri
+        } else {
+            com.example.data.network.JukeboxClient.buildStreamUrl(title, artist, spotifyId)
+        }
+
         return MediaItem.Builder()
             .setMediaId(id)
-            .setUri(Uri.parse(effectivePlayableUri))
+            .setUri(Uri.parse(uriString))
             .setMediaMetadata(metadata)
             .build()
     }

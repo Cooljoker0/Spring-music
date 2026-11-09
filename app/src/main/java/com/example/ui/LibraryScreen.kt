@@ -458,7 +458,7 @@ fun LibraryScreen(
                             fontSize = 14.sp
                         )
                         Text(
-                            text = "Paste any playlist link to stream",
+                            text = "Search by name or paste any playlist link",
                             color = SpotifyTextSecondary,
                             fontSize = 12.sp
                         )

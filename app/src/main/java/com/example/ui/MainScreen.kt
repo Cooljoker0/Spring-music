@@ -108,6 +108,8 @@ fun MainScreen() {
     val queue by playerManager?.queue?.collectAsState() ?: remember { mutableStateOf(emptyList()) }
     val audioQuality by playerManager?.audioQuality?.collectAsState() ?: remember { mutableStateOf("320kbps") }
     val sleepTimerMinutes by playerManager?.sleepTimerMinutes?.collectAsState() ?: remember { mutableStateOf(null) }
+    val currentLyrics by playerManager?.currentLyrics?.collectAsState() ?: remember { mutableStateOf(null) }
+    val isLoadingLyrics by playerManager?.isLoadingLyrics?.collectAsState() ?: remember { mutableStateOf(false) }
     val updateAvailable by AppUpdateManager.updateAvailable.collectAsState()
     val importStatus by repository?.importStatus?.collectAsState() ?: remember { mutableStateOf(PlaylistImportStatus()) }
 
@@ -429,6 +431,9 @@ fun MainScreen() {
             repeatMode = repeatMode,
             audioQuality = audioQuality,
             queue = queue,
+            lyrics = currentLyrics,
+            isLoadingLyrics = isLoadingLyrics,
+            onRetryLyrics = { currentSong?.let { playerManager?.loadLyricsForSong(it) } },
             onPlayPause = { playerManager?.togglePlayPause() },
             onSeekTo = { playerManager?.seekTo(it) },
             onSkipNext = { playerManager?.skipNext() },
