@@ -274,26 +274,27 @@ fun MainScreen() {
                         .padding(start = 16.dp, end = 16.dp, top = 2.dp, bottom = 10.dp)
                         .navigationBarsPadding()
                         .shadow(
-                            elevation = 16.dp,
+                            elevation = 20.dp,
                             shape = RoundedCornerShape(32.dp),
-                            ambientColor = Color.Black.copy(alpha = 0.7f),
-                            spotColor = Color.Black.copy(alpha = 0.7f)
+                            ambientColor = Color.Black.copy(alpha = 0.85f),
+                            spotColor = Color.Black.copy(alpha = 0.85f)
                         )
                         .clip(RoundedCornerShape(32.dp))
                         .background(
                             Brush.verticalGradient(
                                 listOf(
-                                    Color(0xD9222222),
-                                    Color(0xEB121212)
+                                    Color(0xD9222622),
+                                    Color(0xF2121412)
                                 )
                             )
                         )
                         .border(
-                            width = 1.dp,
+                            width = 1.2.dp,
                             brush = Brush.verticalGradient(
                                 listOf(
-                                    Color(0x60FFFFFF),
-                                    Color(0x18FFFFFF)
+                                    Color(0x70FFFFFF),
+                                    Color(0x20FFFFFF),
+                                    Color(0x05FFFFFF)
                                 )
                             ),
                             shape = RoundedCornerShape(32.dp)

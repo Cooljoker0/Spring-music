@@ -513,16 +513,38 @@ fun SpotifyImportSheet(
                             Spacer(modifier = Modifier.width(10.dp))
 
                             Column(modifier = Modifier.weight(1f)) {
+                                val isSpotify = playlist.id.startsWith("spotify_") ||
+                                        playlist.id.startsWith("sp_") ||
+                                        playlist.subtitle.contains("Spotify", ignoreCase = true)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    if (isSpotify) {
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(3.dp))
+                                                .background(SpotifyGreen.copy(alpha = 0.2f))
+                                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        ) {
+                                            Text(
+                                                text = "SPOTIFY",
+                                                color = SpotifyGreen,
+                                                fontSize = 9.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                    }
+                                    Text(
+                                        text = playlist.title,
+                                        color = SpotifyTextPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(2.dp))
                                 Text(
-                                    text = playlist.title,
-                                    color = SpotifyTextPrimary,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = if (playlist.songCount > 0) "${playlist.songCount} songs" else playlist.subtitle.ifBlank { "Playlist" },
+                                    text = if (playlist.songCount > 0) "${playlist.songCount} songs • ${playlist.subtitle}" else playlist.subtitle.ifBlank { "Playlist" },
                                     color = SpotifyTextSecondary,
                                     fontSize = 12.sp,
                                     maxLines = 1,

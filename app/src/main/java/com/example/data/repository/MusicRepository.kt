@@ -14,6 +14,7 @@ import com.example.data.network.JukeboxClient
 import com.example.data.network.NetworkClient
 import com.example.data.network.PresetCatalog
 import com.example.data.network.SpotifyImporter
+import com.example.data.network.SpotifySearchEngine
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -313,29 +314,20 @@ class MusicRepository(
     )
 
     suspend fun searchPlaylists(query: String): List<Playlist> = withContext(Dispatchers.IO) {
-        val qClean = query.trim().lowercase()
         val combinedResults = mutableListOf<Playlist>()
         val seenIds = mutableSetOf<String>()
 
-        // 1. Check curated Spotify & Global catalogs
-        val curatedMatches = curatedPlaylists.filter { entry ->
-            entry.title.lowercase().contains(qClean) ||
-                    entry.keywords.any { qClean.contains(it) || it.contains(qClean) }
-        }.map { entry ->
-            Playlist(
-                id = entry.id,
-                title = entry.title,
-                subtitle = entry.subtitle,
-                coverUrl = entry.coverUrl,
-                songCount = entry.songCount,
-                songs = emptyList()
-            )
-        }
-        for (p in curatedMatches) {
-            if (seenIds.add(p.id)) combinedResults.add(p)
+        // 1. Primary Priority: Spotify Search Engine (returns authentic Spotify editorial & smart mix playlists)
+        try {
+            val spotifyResults = SpotifySearchEngine.searchSpotifyPlaylists(query)
+            for (p in spotifyResults) {
+                if (seenIds.add(p.id)) combinedResults.add(p)
+            }
+        } catch (e: Exception) {
+            android.util.Log.e("MusicRepository", "SpotifySearchEngine search failed: ${e.message}")
         }
 
-        // 2. Priority: Direct JioSaavn Playlists
+        // 2. Direct JioSaavn Playlists
         try {
             val directPlaylists = JioSaavnDirectEngine.searchPlaylists(query)
             for (p in directPlaylists) {
@@ -379,6 +371,19 @@ class MusicRepository(
         // Check preset playlists
         val preset = PresetCatalog.PRESET_PLAYLISTS.find { it.id == playlistId }
         if (preset != null) return@withContext preset
+
+        // If it's a Spotify playlist ID, resolve it via SpotifyImporter!
+        val isSpotifyId = playlistId.startsWith("spotify_") ||
+                playlistId.matches(Regex("^[a-zA-Z0-9]{22}$"))
+
+        if (isSpotifyId && !playlistId.startsWith("spotify_smart_")) {
+            val cleanId = playlistId.removePrefix("spotify_")
+            try {
+                return@withContext importSpotifyPlaylist("https://open.spotify.com/playlist/$cleanId")
+            } catch (e: Exception) {
+                android.util.Log.e("MusicRepository", "Failed to resolve Spotify playlist $cleanId: ${e.message}")
+            }
+        }
 
         // Query direct JioSaavn API
         try {
@@ -542,6 +547,15 @@ class MusicRepository(
     }
 
     suspend fun importSearchedPlaylist(playlist: Playlist): Playlist = withContext(Dispatchers.IO) {
+        if (playlist.id.startsWith("spotify_smart_")) {
+            val queryStr = try {
+                java.net.URLDecoder.decode(playlist.id.removePrefix("spotify_smart_"), "UTF-8")
+            } catch (_: Exception) {
+                playlist.title.removeSuffix(" (Spotify Mix)")
+            }
+            return@withContext importSmartMixPlaylist(queryStr, playlist.title, playlist.coverUrl)
+        }
+
         val isSpotify = playlist.id.startsWith("spotify_") ||
                 playlist.id.startsWith("sp_") ||
                 playlist.id.matches(Regex("^[a-zA-Z0-9]{22}$")) ||
@@ -590,6 +604,69 @@ class MusicRepository(
             completedPlaylist = imported
         )
         imported
+    }
+
+    private suspend fun importSmartMixPlaylist(
+        query: String,
+        title: String,
+        coverUrl: String
+    ): Playlist = withContext(Dispatchers.IO) {
+        _importStatus.value = PlaylistImportStatus(
+            isImporting = true,
+            playlistName = title,
+            currentTrack = 0,
+            totalTracks = 25,
+            trackTitle = "Gathering top songs for '$query'..."
+        )
+
+        val foundSongs = mutableListOf<Song>()
+        try {
+            val jioSongs = JioSaavnDirectEngine.searchSongs(query)
+            foundSongs.addAll(jioSongs.take(25))
+        } catch (_: Exception) {}
+
+        if (foundSongs.isEmpty()) {
+            try {
+                val networkSongs = searchSongs(query)
+                foundSongs.addAll(networkSongs.take(25))
+            } catch (_: Exception) {}
+        }
+
+        if (foundSongs.isEmpty()) {
+            throw IllegalStateException("No songs found for '$query'. Please try another playlist name.")
+        }
+
+        val playlistId = "spring_${System.currentTimeMillis()}"
+        val playlist = Playlist(
+            id = playlistId,
+            title = title,
+            subtitle = "Imported Spotify Mix • ${foundSongs.size} songs",
+            coverUrl = coverUrl.ifBlank { foundSongs.firstOrNull()?.coverUrl.orEmpty() },
+            songCount = foundSongs.size,
+            songs = foundSongs
+        )
+
+        val entity = UserPlaylistEntity(
+            id = playlistId,
+            title = playlist.title,
+            description = "Imported Spotify Mix: $query",
+            coverUrl = playlist.coverUrl,
+            songCount = foundSongs.size,
+            songsJson = serializeSongsJson(foundSongs),
+            isSpotifyImport = true
+        )
+        playlistDao.insertPlaylist(entity)
+        firestoreSyncManager?.savePlaylist(entity)
+
+        _importStatus.value = PlaylistImportStatus(
+            isImporting = false,
+            playlistName = playlist.title,
+            currentTrack = foundSongs.size,
+            totalTracks = foundSongs.size,
+            completedPlaylist = playlist
+        )
+
+        playlist
     }
 
     suspend fun createCustomPlaylist(title: String, description: String = ""): Playlist = withContext(Dispatchers.IO) {

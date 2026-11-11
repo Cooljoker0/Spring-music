@@ -65,7 +65,22 @@ private class InMemoryCookieJar : CookieJar {
 }
 
 object AppUpdateManager {
-    private val firestore by lazy { FirebaseFirestore.getInstance() }
+    private var appContext: Context? = null
+
+    private fun getFirestore(): FirebaseFirestore {
+        val ctx = appContext
+        if (ctx != null) {
+            val dbIdRes = ctx.resources.getIdentifier("firestore_database_id", "string", ctx.packageName)
+            if (dbIdRes != 0) {
+                val dbId = ctx.getString(dbIdRes)
+                if (dbId.isNotBlank()) {
+                    return FirebaseFirestore.getInstance(dbId)
+                }
+            }
+        }
+        return FirebaseFirestore.getInstance()
+    }
+
     private val scope = CoroutineScope(Dispatchers.IO)
 
     private val cookieJar = InMemoryCookieJar()
@@ -120,12 +135,13 @@ object AppUpdateManager {
     private var hasInitialized = false
 
     fun init(context: Context) {
+        appContext = context.applicationContext
         if (hasInitialized) return
         hasInitialized = true
 
         // Listen for real-time OTA updates pushed from anywhere
         try {
-            firestore.collection("app_updates").document("latest")
+            getFirestore().collection("app_updates").document("latest")
                 .addSnapshotListener { snapshot, error ->
                     if (error != null) {
                         return@addSnapshotListener
@@ -179,7 +195,8 @@ object AppUpdateManager {
             _isChecking.value = true
             _statusMessage.value = "Checking for updates..."
             try {
-                val doc = firestore.collection("app_updates").document("latest").get().awaitTask()
+                appContext = context.applicationContext
+                val doc = getFirestore().collection("app_updates").document("latest").get().awaitTask()
                 if (!doc.exists()) {
                     _updateAvailable.value = null
                     _statusMessage.value = "Spring Music is up to date (v$currentVersionName)"
@@ -855,9 +872,10 @@ object AppUpdateManager {
             )
 
             // Save to 'latest' document (which all installed apps check and listen to)
-            firestore.collection("app_updates").document("latest").set(data).awaitTask()
+            val db = getFirestore()
+            db.collection("app_updates").document("latest").set(data).awaitTask()
             // Archive to historical document
-            firestore.collection("app_updates").document("v$versionCode").set(data).awaitTask()
+            db.collection("app_updates").document("v$versionCode").set(data).awaitTask()
 
             // Update in-memory state so local device reflects broadcast immediately
             _updateAvailable.value = AppUpdateInfo(
@@ -879,7 +897,7 @@ object AppUpdateManager {
      */
     suspend fun clearPushedUpdate(): Result<Unit> = withContext(Dispatchers.IO) {
         try {
-            firestore.collection("app_updates").document("latest").delete().awaitTask()
+            getFirestore().collection("app_updates").document("latest").delete().awaitTask()
             _updateAvailable.value = null
             _statusMessage.value = "Update broadcast removed from cloud."
             Result.success(Unit)

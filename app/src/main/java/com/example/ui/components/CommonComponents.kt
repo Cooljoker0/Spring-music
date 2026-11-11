@@ -267,12 +267,20 @@ fun MiniPlayer(
             .padding(horizontal = 8.dp, vertical = 4.dp)
             .testTag("mini_player")
             .clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x30FFFFFF)),
-        colors = CardDefaults.cardColors(
-            containerColor = Color(0xF2222222)
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(
+                    Color(0x55FFFFFF),
+                    Color(0x15FFFFFF)
+                )
+            )
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 10.dp)
+        colors = CardDefaults.cardColors(
+            containerColor = Color(0xD9222623)
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 12.dp)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
@@ -369,15 +377,20 @@ fun MiniPlayer(
                 }
             }
 
-            // Bottom edge slim progress bar
-            val progress = if (durationMs > 0) (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+            // Bottom edge slim progress bar with smooth glide
+            val targetProgress = if (durationMs > 0) (currentPositionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+            val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+                targetValue = targetProgress,
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 200, easing = androidx.compose.animation.core.LinearEasing),
+                label = "mini_progress"
+            )
             LinearProgressIndicator(
-                progress = { progress },
+                progress = { animatedProgress },
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(2.dp),
+                    .height(2.5.dp),
                 color = SpotifyGreen,
-                trackColor = Color(0xFF404040)
+                trackColor = Color(0x30FFFFFF)
             )
         }
     }

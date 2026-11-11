@@ -110,11 +110,13 @@ fun FullPlayerSheet(
     var dragSliderValue by remember { mutableFloatStateOf(0f) }
 
     val effectiveDuration = if (durationMs > 0) durationMs else song.durationMs.coerceAtLeast(1000L)
-    val sliderValue = if (isDraggingSlider) {
-        dragSliderValue
-    } else {
-        (currentPositionMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
-    }
+    val calculatedProgress = (currentPositionMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
+    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = calculatedProgress,
+        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180, easing = androidx.compose.animation.core.LinearEasing),
+        label = "player_progress_glide"
+    )
+    val sliderValue = if (isDraggingSlider) dragSliderValue else animatedProgress
 
     ModalBottomSheet(
         onDismissRequest = onDismiss,
