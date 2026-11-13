@@ -39,7 +39,9 @@ object JioSaavnDirectEngine {
             cipher.init(Cipher.DECRYPT_MODE, keySpec)
             val decoded = Base64.decode(encryptedUrl, Base64.DEFAULT)
             val decryptedBytes = cipher.doFinal(decoded)
-            String(decryptedBytes, StandardCharsets.UTF_8).trim()
+            String(decryptedBytes, StandardCharsets.UTF_8)
+                .trim()
+                .replace("http://", "https://")
         } catch (e: Exception) {
             android.util.Log.e("JioSaavnDirect", "Failed to decrypt media url: ${e.message}")
             null

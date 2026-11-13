@@ -2,12 +2,20 @@ package com.example.service
 
 import android.app.PendingIntent
 import android.content.Intent
+import androidx.annotation.OptIn
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.TrackSelectionParameters
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.session.LibraryResult
 import androidx.media3.session.MediaLibraryService
 import androidx.media3.session.MediaSession
@@ -26,6 +34,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
+@OptIn(UnstableApi::class)
 class SpringMediaLibraryService : MediaLibraryService() {
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -53,32 +62,54 @@ class SpringMediaLibraryService : MediaLibraryService() {
             .build()
 
         val cacheDataSourceFactory = MediaCacheManager.getCacheDataSourceFactory(this)
-        val mediaSourceFactory = DefaultMediaSourceFactory(this)
+        val extractorsFactory = DefaultExtractorsFactory()
+            .setConstantBitrateSeekingEnabled(true)
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(this, extractorsFactory)
             .setDataSourceFactory(cacheDataSourceFactory)
 
-        val loadControl = androidx.media3.exoplayer.DefaultLoadControl.Builder()
+        // Use deterministic standard synchronous decoding and 16-bit PCM AudioTrack without offload/playbackParams drift
+        val renderersFactory = DefaultRenderersFactory(this)
+            .setEnableAudioFloatOutput(false)
+            .setEnableAudioTrackPlaybackParams(false)
+
+        val trackSelector = DefaultTrackSelector(this).apply {
+            parameters = buildUponParameters()
+                .setAudioOffloadPreferences(
+                    TrackSelectionParameters.AudioOffloadPreferences.Builder()
+                        .setAudioOffloadMode(TrackSelectionParameters.AudioOffloadPreferences.AUDIO_OFFLOAD_MODE_DISABLED)
+                        .build()
+                )
+                .build()
+        }
+
+        val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                /* minBufferMs = */ 15_000,
-                /* maxBufferMs = */ 50_000,
-                /* bufferForPlaybackMs = */ 1_000,
-                /* bufferForPlaybackAfterRebufferMs = */ 2_000
+                /* minBufferMs = */ 25_000,
+                /* maxBufferMs = */ 60_000,
+                /* bufferForPlaybackMs = */ 2_000,
+                /* bufferForPlaybackAfterRebufferMs = */ 3_500
             )
+            .setBackBuffer(10_000, true)
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
-        player = ExoPlayer.Builder(this)
+        player = ExoPlayer.Builder(this, renderersFactory)
             .setMediaSourceFactory(mediaSourceFactory)
+            .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_NETWORK)
             .build()
 
+        player.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+
         player.addListener(object : androidx.media3.common.Player.Listener {
             override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                 android.util.Log.e("SpringMediaService", "Player error encountered: ${error.errorCodeName} - ${error.message}", error)
                 val app = applicationContext as? SpringApplication
-                app?.playerManager?.handlePlaybackError(player, error)
+                app?.playerManager?.onServicePlayerError(player, error)
             }
         })
 

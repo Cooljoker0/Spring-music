@@ -22,7 +22,8 @@ data class Song(
     val localFilePath: String? = null
 ) {
     val isJukeboxEngine: Boolean
-        get() = sourceEngine.equals("jukebox", ignoreCase = true)
+        get() = sourceEngine.equals("jukebox", ignoreCase = true) ||
+            audioUrl.contains("/v1/stream", ignoreCase = true)
 
     val effectivePlayableUri: String
         get() = if (!localFilePath.isNullOrBlank()) localFilePath else audioUrl

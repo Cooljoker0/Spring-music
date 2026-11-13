@@ -9,21 +9,21 @@ import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
 enum class AppThemePreset(val id: String, val title: String, val subtitle: String) {
-    SPOTIFY_DARK("spotify_dark", "Spring Dark", "Signature pitch black & Spring neon green"),
+    SPOTIFY_DARK("spotify_dark", "Obsidian Gold", "Luxury smoked obsidian glass with champagne gold & amethyst"),
     APPLE_LIQUID_GLASS("apple_liquid_glass", "Apple Liquid Glass", "Translucent frosted glass with neon crimson rose"),
     CUSTOM_AI("custom_ai", "Custom AI Prompt", "Dynamic palette generated from your aesthetic prompt")
 }
 
 data class CustomAppTheme(
     val id: String = "spotify_dark",
-    val name: String = "Spring Dark",
-    val prompt: String = "Classic Spring Green & Pitch Black",
-    val primaryColor: Color = SpotifyGreen,
-    val primaryBright: Color = SpotifyGreenBright,
-    val accentColor: Color = SpotifyGreenBright,
-    val cardBackground: Color = SpotifyCard,
-    val isGlass: Boolean = false,
-    val glassBorderColor: Color = Color.Transparent,
+    val name: String = "Obsidian Gold",
+    val prompt: String = "Luxury Obsidian Champagne Gold & Velvet Amethyst",
+    val primaryColor: Color = AuroraCyan,
+    val primaryBright: Color = AuroraViolet,
+    val accentColor: Color = AuroraMagenta,
+    val cardBackground: Color = FrostedGlassSurface,
+    val isGlass: Boolean = true,
+    val glassBorderColor: Color = FrostedGlassBorder,
     val isCustom: Boolean = false
 )
 
@@ -39,14 +39,14 @@ object AiThemeManager {
 
     val SpotifyDarkTheme = CustomAppTheme(
         id = "spotify_dark",
-        name = "Spring Dark",
-        prompt = "Classic Spring Green & Pitch Black",
-        primaryColor = SpotifyGreen,
-        primaryBright = SpotifyGreenBright,
-        accentColor = SpotifyGreenBright,
-        cardBackground = SpotifyCard,
-        isGlass = false,
-        glassBorderColor = Color.Transparent,
+        name = "Obsidian Gold",
+        prompt = "Luxury Obsidian Champagne Gold & Velvet Amethyst",
+        primaryColor = AuroraCyan,
+        primaryBright = AuroraViolet,
+        accentColor = AuroraMagenta,
+        cardBackground = FrostedGlassSurface,
+        isGlass = true,
+        glassBorderColor = FrostedGlassBorder,
         isCustom = false
     )
 

@@ -165,7 +165,7 @@ fun LyricsView(
                     Surface(
                         onClick = onRetry,
                         shape = RoundedCornerShape(20.dp),
-                        color = Color(0xFF2A2A2A),
+                        color = SpotifyCard,
                         modifier = Modifier.testTag("btn_retry_lyrics")
                     ) {
                         Row(
@@ -294,7 +294,7 @@ fun LyricsView(
                 .align(Alignment.TopCenter)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xE6121212), Color.Transparent)
+                        listOf(Color(0xCC08090F), Color.Transparent)
                     )
                 )
         )
@@ -307,7 +307,7 @@ fun LyricsView(
                 .align(Alignment.BottomCenter)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color(0xE6121212))
+                        listOf(Color.Transparent, Color(0xCC08090F))
                     )
                 )
         )

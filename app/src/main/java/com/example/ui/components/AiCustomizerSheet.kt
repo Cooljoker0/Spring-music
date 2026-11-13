@@ -217,7 +217,7 @@ fun AiCustomizerSheet(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Spring Dark",
+                            text = "Obsidian Gold",
                             color = SpotifyTextPrimary,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
@@ -337,8 +337,8 @@ fun AiCustomizerSheet(
                         scope.launch {
                             firestoreSyncManager?.saveSettings(
                                 customThemePrompt = "",
-                                primaryColorHex = "#1DB954",
-                                accentColorHex = "#1ED760"
+                                primaryColorHex = "#E8C57B",
+                                accentColorHex = "#8B6EFF"
                             )
                         }
                     },

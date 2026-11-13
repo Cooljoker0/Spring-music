@@ -31,6 +31,10 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 import com.example.data.firestore.FirestoreSyncManager
+import com.example.data.local.SpringDatabase
+import com.example.data.recommendation.FeedbackType
+import com.example.data.recommendation.RecommendationEngine
+import com.example.data.recommendation.RecommendationSectionsState
 
 data class PlaylistImportStatus(
     val isImporting: Boolean = false,
@@ -50,8 +54,64 @@ class MusicRepository(
 ) {
     private val repositoryScope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
+    val recommendationEngine: RecommendationEngine by lazy {
+        val db = SpringDatabase.getInstance(context)
+        RecommendationEngine(
+            recommendationDao = db.recommendationDao(),
+            songDao = songDao,
+            playlistDao = playlistDao,
+            context = context
+        )
+    }
+
+    val recommendationsState: StateFlow<RecommendationSectionsState>
+        get() = recommendationEngine.recommendationsState
+
+    val similarSongsState: StateFlow<List<Song>>
+        get() = recommendationEngine.similarSongsState
+
+    val isPersonalizationEnabled: StateFlow<Boolean>
+        get() = recommendationEngine.isPersonalizationEnabled
+
+    val listeningHistoryFlow: kotlinx.coroutines.flow.Flow<List<com.example.data.local.SongPlayHistoryEntity>>
+        get() = recommendationEngine.recommendationDao.getRecentPlaysFlow()
+
+    val feedbackListFlow: kotlinx.coroutines.flow.Flow<List<com.example.data.local.RecommendationFeedbackEntity>>
+        get() = recommendationEngine.recommendationDao.getAllFeedbackFlow()
+
+    init {
+        repositoryScope.launch {
+            try {
+                recommendationEngine.initialize()
+            } catch (e: Exception) {
+                android.util.Log.e("MusicRepository", "RecommendationEngine init error: ${e.message}")
+            }
+        }
+    }
+
     private val _importStatus = MutableStateFlow(PlaylistImportStatus())
     val importStatus: StateFlow<PlaylistImportStatus> = _importStatus.asStateFlow()
+
+    private val _topChartsState = MutableStateFlow<List<Song>>(emptyList())
+    val topChartsState: StateFlow<List<Song>> = _topChartsState.asStateFlow()
+
+    fun loadTopChartsIfNeeded() {
+        if (_topChartsState.value.isNotEmpty()) return
+        repositoryScope.launch {
+            val trendingFromRecs = recommendationsState.value.sections.firstOrNull {
+                it.categoryKey.contains("trending", true) || it.categoryKey.contains("popular", true)
+            }?.songs.orEmpty()
+            val liveCharts = try {
+                searchSongs("Top 50 Global Hits", "Charts")
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val combined = (liveCharts + trendingFromRecs).distinctBy { it.id }.take(10)
+            if (combined.isNotEmpty()) {
+                _topChartsState.value = combined
+            }
+        }
+    }
 
     fun dismissImportStatus() {
         _importStatus.value = PlaylistImportStatus()
@@ -745,7 +805,12 @@ class MusicRepository(
         }
     }
 
-    suspend fun recordPlayed(song: Song) = withContext(Dispatchers.IO) {
+    suspend fun recordPlayed(
+        song: Song,
+        playDurationMs: Long = 0L,
+        isCompleted: Boolean = false,
+        isSkipped: Boolean = false
+    ) = withContext(Dispatchers.IO) {
         val existing = songDao.getSongById(song.id)
         val now = System.currentTimeMillis()
         if (existing != null) {
@@ -754,6 +819,50 @@ class MusicRepository(
             songDao.upsertSong(
                 SavedSongEntity.fromSong(song, lastPlayedTimestamp = now)
             )
+        }
+        try {
+            recommendationEngine.recordSongPlayEvent(song, playDurationMs, isCompleted, isSkipped)
+        } catch (e: Exception) {
+            android.util.Log.w("MusicRepository", "Failed to update recommendation play event: ${e.message}")
+        }
+    }
+
+    fun refreshRecommendations(force: Boolean = true) {
+        repositoryScope.launch {
+            recommendationEngine.refreshAllRecommendations(force = force)
+        }
+    }
+
+    fun recordSongFeedback(song: Song, feedbackType: FeedbackType) {
+        repositoryScope.launch {
+            recommendationEngine.recordFeedback(song, feedbackType)
+        }
+    }
+
+    suspend fun getSimilarSongs(song: Song): List<Song> {
+        return recommendationEngine.fetchSimilarSongs(song)
+    }
+
+    fun setPersonalizationEnabled(enabled: Boolean) {
+        recommendationEngine.setPersonalizationEnabled(enabled)
+    }
+
+    fun clearRecommendationHistory() {
+        repositoryScope.launch {
+            recommendationEngine.clearHistory()
+        }
+    }
+
+    fun resetRecommendationPreferences() {
+        repositoryScope.launch {
+            recommendationEngine.resetPreferences()
+        }
+    }
+
+    fun removeFeedback(id: String) {
+        repositoryScope.launch {
+            recommendationEngine.recommendationDao.removeFeedback(id)
+            recommendationEngine.refreshAllRecommendations(force = true)
         }
     }
 

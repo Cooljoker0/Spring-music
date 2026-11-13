@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="spring_emerald">#059669</color>
-    <color name="spring_dark_bg">#0A0F0D</color>
-    <color name="spotify_black">#121212</color>
+    <color name="spring_emerald">#E5C17B</color>
+    <color name="spring_dark_bg">#07070B</color>
+    <color name="spotify_black">#07070B</color>
 </resources>

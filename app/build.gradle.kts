@@ -97,8 +97,8 @@ tasks.matching { it.name.contains("Signing", ignoreCase = true) }.configureEach 
 // --- Synchronized App Version Metadata ---
 object AppVersionConfig {
     const val MAJOR = 9
-    const val MINOR = 1
-    const val BUILD_CODE = 2
+    const val MINOR = 4
+    const val BUILD_CODE = 5
 
     fun getVersionName(): String = "$MAJOR.$MINOR"
     fun getVersionCode(): Int = BUILD_CODE

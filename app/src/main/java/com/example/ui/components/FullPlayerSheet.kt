@@ -1,7 +1,15 @@
 package com.example.ui.components
 
+import android.content.Context
+import android.content.Intent
+import android.media.AudioDeviceInfo
+import android.media.AudioManager
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,8 +19,11 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -20,13 +31,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -37,53 +49,67 @@ import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
 import androidx.compose.material.icons.filled.Speaker
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material.icons.filled.Whatshot
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.flow.StateFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.Song
 import com.example.data.model.SongLyrics
-import com.example.ui.theme.SpotifyBlack
-import com.example.ui.theme.SpotifyCard
-import com.example.ui.theme.SpotifyCardElevated
-import com.example.ui.theme.SpotifyGreen
-import com.example.ui.theme.SpotifyPitchBlack
-import com.example.ui.theme.SpotifyTextMuted
-import com.example.ui.theme.SpotifyTextPrimary
-import com.example.ui.theme.SpotifyTextSecondary
+import com.example.data.recommendation.FeedbackType
+import com.example.ui.theme.AuroraCyan
+import com.example.ui.theme.AuroraDisplayFontFamily
+import com.example.ui.theme.AuroraMagenta
+import com.example.ui.theme.AuroraViolet
+import com.example.ui.theme.CrispWhite
+import com.example.ui.theme.FrostedGlassBorder
+import com.example.ui.theme.FrostedGlassSurface
+import com.example.ui.theme.FusionAmbience
+import com.example.ui.theme.GoldBright
+import com.example.ui.theme.IosEmerald
+import com.example.ui.theme.IosRed
+import com.example.ui.theme.MidnightCanvas
+import com.example.ui.theme.MidnightElevated
+import com.example.ui.theme.SlateSecondary
+import kotlin.math.roundToInt
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FullPlayerSheet(
     song: Song,
     isPlaying: Boolean,
-    currentPositionMs: Long,
-    durationMs: Long,
+    positionFlow: StateFlow<Long>?,
+    durationFlow: StateFlow<Long>?,
     isShuffle: Boolean,
     repeatMode: Int,
     audioQuality: String,
@@ -101,262 +127,369 @@ fun FullPlayerSheet(
     onDownloadClick: () -> Unit,
     onSelectQuality: (String) -> Unit,
     onDismiss: () -> Unit,
-    onPlayQueueSong: (Song) -> Unit
+    onPlayQueueSong: (Song) -> Unit,
+    similarSongs: List<Song> = emptyList(),
+    onSelectSimilarSong: ((Song) -> Unit)? = null,
+    onFeedback: ((Song, FeedbackType) -> Unit)? = null
 ) {
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    BackHandler { onDismiss() }
+
+    val context = LocalContext.current
     var showQueue by remember { mutableStateOf(false) }
     var showLyrics by remember { mutableStateOf(false) }
-    var isDraggingSlider by remember { mutableStateOf(false) }
-    var dragSliderValue by remember { mutableFloatStateOf(0f) }
+    var showOptionsMenu by remember { mutableStateOf(false) }
+    var showDeviceSheet by remember { mutableStateOf(false) }
+    var dragOffsetY by remember { mutableFloatStateOf(0f) }
 
-    val effectiveDuration = if (durationMs > 0) durationMs else song.durationMs.coerceAtLeast(1000L)
-    val calculatedProgress = (currentPositionMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
-    val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = calculatedProgress,
-        animationSpec = androidx.compose.animation.core.tween(durationMillis = 180, easing = androidx.compose.animation.core.LinearEasing),
-        label = "player_progress_glide"
-    )
-    val sliderValue = if (isDraggingSlider) dragSliderValue else animatedProgress
+    val ambientColors = remember(song.id, song.mood) { FusionAmbience.getColors(song) }
+    val primaryGlow = ambientColors.firstOrNull() ?: AuroraCyan
 
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = sheetState,
-        containerColor = SpotifyPitchBlack,
-        dragHandle = null,
+    Box(
         modifier = Modifier
             .fillMaxSize()
+            .offset { IntOffset(0, dragOffsetY.roundToInt().coerceAtLeast(0)) }
+            .background(MidnightCanvas)
+            .pointerInput(Unit) {
+                detectVerticalDragGestures(
+                    onVerticalDrag = { _, dragAmount ->
+                        if (dragOffsetY + dragAmount >= 0f) {
+                            dragOffsetY += dragAmount
+                        }
+                    },
+                    onDragEnd = {
+                        if (dragOffsetY > 180f) {
+                            onDismiss()
+                        }
+                        dragOffsetY = 0f
+                    },
+                    onDragCancel = {
+                        dragOffsetY = 0f
+                    }
+                )
+            }
             .testTag("full_player_sheet")
     ) {
-        Box(
+        // Dynamic Ambient Color Glow behind Album Cover & Sheet
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        primaryGlow.copy(alpha = 0.42f),
+                        AuroraViolet.copy(alpha = 0.28f),
+                        Color.Transparent
+                    )
+                ),
+                radius = size.width * 0.78f,
+                center = Offset(size.width * 0.5f, size.height * 0.34f)
+            )
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(
+                        AuroraMagenta.copy(alpha = 0.22f),
+                        Color.Transparent
+                    )
+                ),
+                radius = size.width * 0.65f,
+                center = Offset(size.width * 0.25f, size.height * 0.72f)
+            )
+        }
+
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        listOf(
-                            Color(0xFF2E3D35),
-                            Color(0xFF1A2420),
-                            SpotifyBlack,
-                            SpotifyPitchBlack
-                        )
-                    )
-                )
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 24.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
+            // iOS Drag Indicator Pill
+            Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .width(40.dp)
+                    .height(5.dp)
+                    .clip(CircleShape)
+                    .background(Color(0x55FFFFFF))
+                    .clickable { onDismiss() }
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Top Header: Collapse Chevron + "PLAYING FROM PLAYLIST" + Circular "..." Menu Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top Navigation Bar
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(FrostedGlassSurface)
+                        .border(1.dp, FrostedGlassBorder, CircleShape)
+                        .clickable { onDismiss() }
+                        .testTag("btn_dismiss_player"),
+                    contentAlignment = Alignment.Center
                 ) {
-                    IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.testTag("btn_dismiss_player")
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = "Collapse Player",
+                        tint = CrispWhite,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f).padding(horizontal = 12.dp)
+                ) {
+                    Text(
+                        text = "PLAYING FROM PLAYLIST",
+                        color = SlateSecondary,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.2.sp
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = song.album.ifBlank { "Spring Aurora" },
+                        color = CrispWhite,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+
+                // Circular "..." Options Menu Button
+                Box {
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(FrostedGlassSurface)
+                            .border(1.dp, FrostedGlassBorder, CircleShape)
+                            .clickable { showOptionsMenu = true }
+                            .testTag("btn_player_options"),
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.KeyboardArrowDown,
-                            contentDescription = "Collapse",
-                            tint = SpotifyTextPrimary,
-                            modifier = Modifier.size(32.dp)
+                            imageVector = Icons.Default.MoreHoriz,
+                            contentDescription = "Track Options",
+                            tint = CrispWhite,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text(
-                            text = "PLAYING FROM PLAYLIST",
-                            color = SpotifyTextSecondary,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.2.sp
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = song.album.ifBlank { "Spring" },
-                            color = SpotifyTextPrimary,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        IconButton(
-                            onClick = {
-                                showLyrics = !showLyrics
-                                if (showLyrics) showQueue = false
+                    DropdownMenu(
+                        expanded = showOptionsMenu,
+                        onDismissRequest = { showOptionsMenu = false },
+                        modifier = Modifier.background(MidnightElevated)
+                    ) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (song.isDownloaded) "Downloaded ($audioQuality)" else "Download Track",
+                                    color = CrispWhite
+                                )
                             },
-                            modifier = Modifier.testTag("btn_toggle_lyrics")
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Mic,
-                                contentDescription = "Lyrics",
-                                tint = if (showLyrics) SpotifyGreen else SpotifyTextPrimary,
-                                modifier = Modifier.size(24.dp)
+                            leadingIcon = {
+                                Icon(
+                                    imageVector = if (song.isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
+                                    contentDescription = null,
+                                    tint = if (song.isDownloaded) IosEmerald else AuroraCyan
+                                )
+                            },
+                            onClick = {
+                                showOptionsMenu = false
+                                onDownloadClick()
+                            }
+                        )
+                        listOf("320kbps", "160kbps", "128kbps").forEach { q ->
+                            val isSel = audioQuality.equals(q, ignoreCase = true)
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = if (isSel) "Quality: $q (Active)" else "Switch Quality: $q",
+                                        color = if (isSel) AuroraCyan else CrispWhite
+                                    )
+                                },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onSelectQuality(q)
+                                }
                             )
                         }
-
-                        IconButton(
-                            onClick = {
-                                showQueue = !showQueue
-                                if (showQueue) showLyrics = false
-                            },
-                            modifier = Modifier.testTag("btn_toggle_queue")
-                        ) {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                                contentDescription = "Queue",
-                                tint = if (showQueue) SpotifyGreen else SpotifyTextPrimary,
-                                modifier = Modifier.size(26.dp)
+                        if (onFeedback != null) {
+                            DropdownMenuItem(
+                                text = { Text("Play More Like This", color = CrispWhite) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Whatshot, contentDescription = null, tint = AuroraCyan)
+                                },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onFeedback(song, FeedbackType.PLAY_MORE_LIKE_THIS)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Not Interested", color = CrispWhite) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = SlateSecondary)
+                                },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onFeedback(song, FeedbackType.NOT_INTERESTED)
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Don't Recommend Artist", color = IosRed) },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Block, contentDescription = null, tint = IosRed)
+                                },
+                                onClick = {
+                                    showOptionsMenu = false
+                                    onFeedback(song, FeedbackType.DONT_RECOMMEND_ARTIST)
+                                }
                             )
                         }
                     }
                 }
+            }
 
-                Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-                when {
-                    showQueue -> {
-                        // Queue list view
-                        Column(modifier = Modifier.weight(1f)) {
+            // Main Stage: Artwork / Live Lyrics / Queue
+            when {
+                showQueue -> {
+                    LazyColumn(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        item {
                             Text(
                                 text = "Up Next (${queue.size} songs)",
-                                color = SpotifyTextPrimary,
+                                color = CrispWhite,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(bottom = 12.dp)
+                                modifier = Modifier.padding(bottom = 6.dp)
                             )
-
-                            LazyColumn(
-                                modifier = Modifier.fillMaxSize(),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                items(queue) { item ->
-                                    val isItemCurrent = item.id == song.id
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(if (isItemCurrent) SpotifyCardElevated else Color.Transparent)
-                                            .clickable { onPlayQueueSong(item) }
-                                            .padding(8.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(44.dp)
-                                                .clip(RoundedCornerShape(4.dp))
-                                                .background(SpotifyCard),
-                                            contentAlignment = Alignment.Center
-                                        ) {
-                                            if (item.coverUrl.isNotBlank()) {
-                                                AsyncImage(
-                                                    model = item.coverUrl,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.fillMaxSize(),
-                                                    contentScale = ContentScale.Crop
-                                                )
-                                            }
-                                            if (isItemCurrent) {
-                                                AnimatedEqualizer(isPlaying = isPlaying)
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.width(12.dp))
-
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = item.title,
-                                                color = if (isItemCurrent) SpotifyGreen else SpotifyTextPrimary,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                            Text(
-                                                text = item.artist,
-                                                color = SpotifyTextSecondary,
-                                                fontSize = 12.sp,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
-                                            )
-                                        }
-                                    }
-                                }
-                            }
                         }
-                    }
-
-                    showLyrics -> {
-                        // Fullscreen / Expanded Karaoke Synchronized Lyrics View
-                        Column(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                        ) {
+                        items(queue, key = { it.id }) { item ->
+                            val isItemCurrent = item.id == song.id
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(bottom = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
+                                    .clip(RoundedCornerShape(14.dp))
+                                    .background(if (isItemCurrent) FrostedGlassSurface else Color.Transparent)
+                                    .border(
+                                        width = if (isItemCurrent) 1.dp else 0.dp,
+                                        color = if (isItemCurrent) AuroraCyan.copy(alpha = 0.5f) else Color.Transparent,
+                                        shape = RoundedCornerShape(14.dp)
+                                    )
+                                    .clickable { onPlayQueueSong(item) }
+                                    .padding(10.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Icon(
-                                        imageVector = Icons.Default.Mic,
-                                        contentDescription = null,
-                                        tint = SpotifyGreen,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .size(46.dp)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(MidnightElevated),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (item.coverUrl.isNotBlank()) {
+                                        AsyncImage(
+                                            model = item.coverUrl,
+                                            contentDescription = null,
+                                            modifier = Modifier.fillMaxSize(),
+                                            contentScale = ContentScale.Crop
+                                        )
+                                    }
+                                    if (isItemCurrent) {
+                                        AnimatedEqualizer(isPlaying = isPlaying, barColor = AuroraCyan)
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(12.dp))
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "LIVE LYRICS",
-                                        color = SpotifyGreen,
-                                        fontSize = 12.sp,
+                                        text = item.title,
+                                        color = if (isItemCurrent) AuroraCyan else CrispWhite,
                                         fontWeight = FontWeight.Bold,
-                                        letterSpacing = 1.sp
+                                        fontSize = 14.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = item.artist,
+                                        color = SlateSecondary,
+                                        fontSize = 12.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
-                                Text(
-                                    text = "Tap line to seek • Tap mic to close",
-                                    color = SpotifyTextSecondary,
-                                    fontSize = 11.sp
+                            }
+                        }
+
+                        if (similarSongs.isNotEmpty()) {
+                            item {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                SimilarSongsSection(
+                                    currentSong = song,
+                                    similarSongs = similarSongs,
+                                    onSongSelected = { s, _ -> onSelectSimilarSong?.invoke(s) ?: onPlayQueueSong(s) },
+                                    onFavoriteToggle = { onToggleFavorite() },
+                                    onFeedback = { s, type -> onFeedback?.invoke(s, type) }
                                 )
                             }
-
-                            LyricsView(
-                                lyrics = lyrics,
-                                isLoading = isLoadingLyrics,
-                                currentPositionMs = currentPositionMs,
-                                primaryColor = SpotifyGreen,
-                                onSeekTo = onSeekTo,
-                                onRetry = { onRetryLyrics?.invoke() },
-                                onClose = { showLyrics = false },
-                                modifier = Modifier.fillMaxSize()
-                            )
                         }
                     }
+                }
 
-                    else -> {
-                    // Large Spotify Square Cover Art
-                    Box(
+                showLyrics -> {
+                    Column(
                         modifier = Modifier
                             .weight(1f)
                             .fillMaxWidth()
-                            .padding(vertical = 12.dp),
+                            .clip(RoundedCornerShape(22.dp))
+                            .background(FrostedGlassSurface)
+                            .border(1.dp, FrostedGlassBorder, RoundedCornerShape(22.dp))
+                            .padding(12.dp)
+                    ) {
+                        LyricsStage(
+                            lyrics = lyrics,
+                            isLoading = isLoadingLyrics,
+                            positionFlow = positionFlow,
+                            onSeekTo = onSeekTo,
+                            onRetry = { onRetryLyrics?.invoke() },
+                            onClose = { showLyrics = false }
+                        )
+                    }
+                }
+
+                else -> {
+                    // Centered Hero Album Cover (24dp corner radius) with Ambient Shadow Glow
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
                         contentAlignment = Alignment.Center
                     ) {
-                        Card(
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth(0.92f)
+                                .fillMaxWidth(0.90f)
                                 .aspectRatio(1f)
+                                .shadow(
+                                    elevation = 34.dp,
+                                    shape = RoundedCornerShape(24.dp),
+                                    ambientColor = primaryGlow.copy(alpha = 0.7f),
+                                    spotColor = AuroraMagenta.copy(alpha = 0.6f)
+                                )
+                                .clip(RoundedCornerShape(24.dp))
+                                .border(1.2.dp, FusionAmbience.GlassBorderBrush, RoundedCornerShape(24.dp))
+                                .background(FrostedGlassSurface)
                                 .testTag("full_player_art"),
-                            shape = RoundedCornerShape(8.dp),
-                            elevation = CardDefaults.cardElevation(defaultElevation = 16.dp)
+                            contentAlignment = Alignment.Center
                         ) {
                             if (song.coverUrl.isNotBlank()) {
                                 AsyncImage(
@@ -366,340 +499,420 @@ fun FullPlayerSheet(
                                     contentScale = ContentScale.Crop
                                 )
                             } else {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxSize()
-                                        .background(SpotifyCard),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.MusicNote,
-                                        contentDescription = null,
-                                        tint = SpotifyGreen,
-                                        modifier = Modifier.size(80.dp)
-                                    )
-                                }
+                                Icon(
+                                    imageVector = Icons.Default.MusicNote,
+                                    contentDescription = null,
+                                    tint = AuroraCyan,
+                                    modifier = Modifier.size(84.dp)
+                                )
                             }
                         }
                     }
                 }
             }
 
-            if (!showQueue) {
-                // Track Details & Liked Heart Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = song.title,
-                                color = SpotifyTextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 22.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = song.artist,
-                                color = SpotifyTextSecondary,
-                                fontSize = 16.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+            Spacer(modifier = Modifier.height(18.dp))
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(onClick = onDownloadClick) {
-                                Icon(
-                                    imageVector = if (song.isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
-                                    contentDescription = "Download",
-                                    tint = if (song.isDownloaded) SpotifyGreen else SpotifyTextSecondary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                            }
-
-                            IconButton(
-                                onClick = onToggleFavorite,
-                                modifier = Modifier.testTag("btn_full_favorite")
-                            ) {
-                                Icon(
-                                    imageVector = if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                    contentDescription = "Like Song",
-                                    tint = if (song.isFavorite) SpotifyGreen else SpotifyTextSecondary,
-                                    modifier = Modifier.size(28.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Progress Slider
-                    Slider(
-                        value = sliderValue,
-                        onValueChange = {
-                            isDraggingSlider = true
-                            dragSliderValue = it
-                        },
-                        onValueChangeFinished = {
-                            val targetMs = (dragSliderValue * effectiveDuration).toLong()
-                            onSeekTo(targetMs)
-                            isDraggingSlider = false
-                        },
-                        colors = SliderDefaults.colors(
-                            thumbColor = SpotifyTextPrimary,
-                            activeTrackColor = SpotifyTextPrimary,
-                            inactiveTrackColor = Color(0xFF4D4D4D)
-                        ),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("full_player_slider")
+            // Track Info & Magenta-Pink Favorite + Share Buttons
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = song.title,
+                        color = CrispWhite,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 22.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = song.artist,
+                        color = SlateSecondary,
+                        fontSize = 16.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
 
-                    // Timestamps
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(
+                        onClick = onToggleFavorite,
+                        modifier = Modifier.testTag("btn_full_favorite")
                     ) {
-                        val currentMs = if (isDraggingSlider) (dragSliderValue * effectiveDuration).toLong() else currentPositionMs
-                        Text(
-                            text = formatDuration(currentMs),
-                            color = SpotifyTextSecondary,
-                            fontSize = 12.sp
-                        )
-                        Text(
-                            text = formatDuration(effectiveDuration),
-                            color = SpotifyTextSecondary,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    // Spotify Main Controls Row
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        // Shuffle
-                        IconButton(onClick = onToggleShuffle) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = Icons.Default.Shuffle,
-                                    contentDescription = "Shuffle",
-                                    tint = if (isShuffle) SpotifyGreen else SpotifyTextPrimary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                if (isShuffle) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(4.dp)
-                                            .clip(CircleShape)
-                                            .background(SpotifyGreen)
-                                    )
-                                }
-                            }
-                        }
-
-                        // Previous Track
-                        IconButton(
-                            onClick = onSkipPrevious,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SkipPrevious,
-                                contentDescription = "Previous",
-                                tint = SpotifyTextPrimary,
-                                modifier = Modifier.size(36.dp)
-                            )
-                        }
-
-                        // Big Solid White Circular Play/Pause Button (Spotify Icon)
-                        Box(
+                        Icon(
+                            imageVector = if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                            contentDescription = "Favorite Song",
+                            tint = if (song.isFavorite) AuroraMagenta else SlateSecondary,
                             modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(SpotifyTextPrimary)
-                                .clickable { onPlayPause() }
-                                .testTag("btn_full_play_pause"),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                contentDescription = if (isPlaying) "Pause" else "Play",
-                                tint = Color.Black,
-                                modifier = Modifier.size(36.dp)
-                            )
-                        }
-
-                        // Next Track
-                        IconButton(
-                            onClick = onSkipNext,
-                            modifier = Modifier.size(48.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.SkipNext,
-                                contentDescription = "Next",
-                                tint = SpotifyTextPrimary,
-                                modifier = Modifier.size(36.dp)
-                            )
-                        }
-
-                        // Repeat Mode
-                        IconButton(onClick = onToggleRepeat) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Icon(
-                                    imageVector = if (repeatMode == 1) Icons.Default.RepeatOne else Icons.Default.Repeat,
-                                    contentDescription = "Repeat",
-                                    tint = if (repeatMode != 0) SpotifyGreen else SpotifyTextPrimary,
-                                    modifier = Modifier.size(24.dp)
-                                )
-                                if (repeatMode != 0) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(4.dp)
-                                            .clip(CircleShape)
-                                            .background(SpotifyGreen)
-                                    )
+                                .size(26.dp)
+                                .let {
+                                    if (song.isFavorite) it.shadow(10.dp, CircleShape, ambientColor = AuroraMagenta, spotColor = AuroraMagenta) else it
                                 }
-                            }
-                        }
+                        )
                     }
 
-                    // Spotify-Style Quick Lyrics Card (only visible in artwork mode)
-                    if (!showLyrics) {
-                        Spacer(modifier = Modifier.height(14.dp))
-                        Card(
+                    IconButton(
+                        onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_SUBJECT, "${song.title} — ${song.artist}")
+                                putExtra(
+                                    Intent.EXTRA_TEXT,
+                                    "Listening to ${song.title} by ${song.artist} on Spring Music"
+                                )
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "Share song"))
+                        },
+                        modifier = Modifier.testTag("btn_share_song")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = "Share Song",
+                            tint = SlateSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Isolated Waveform Scrubber + Tabular Timestamps (only this block ticks every 250ms)
+            FullPlayerWaveformSection(
+                song = song,
+                isPlaying = isPlaying,
+                positionFlow = positionFlow,
+                durationFlow = durationFlow,
+                onSeekTo = onSeekTo
+            )
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Transport Controls Row: Shuffle, Previous, 72dp Luminous Frosted Play/Pause, Next, Repeat
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onToggleShuffle) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = Icons.Default.Shuffle,
+                            contentDescription = "Shuffle",
+                            tint = if (isShuffle) AuroraCyan else SlateSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        if (isShuffle) {
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(4.dp)
+                                    .clip(CircleShape)
+                                    .background(AuroraCyan)
+                            )
+                        }
+                    }
+                }
+
+                IconButton(
+                    onClick = onSkipPrevious,
+                    modifier = Modifier.size(50.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipPrevious,
+                        contentDescription = "Previous Track",
+                        tint = CrispWhite,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
+                // 72dp Luminous Champagne-Gold Primary Play/Pause Button
+                Box(
+                    modifier = Modifier
+                        .size(72.dp)
+                        .shadow(
+                            elevation = 24.dp,
+                            shape = CircleShape,
+                            ambientColor = AuroraCyan,
+                            spotColor = AuroraViolet
+                        )
+                        .clip(CircleShape)
+                        .background(FusionAmbience.GoldMetallicBrush)
+                        .border(
+                            width = 1.6.dp,
+                            brush = Brush.verticalGradient(listOf(GoldBright, AuroraCyan.copy(alpha = 0.65f))),
+                            shape = CircleShape
+                        )
+                        .bouncyClick(pressedScale = 0.90f) { onPlayPause() }
+                        .testTag("btn_full_play_pause"),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                        contentDescription = if (isPlaying) "Pause" else "Play",
+                        tint = MidnightCanvas,
+                        modifier = Modifier.size(38.dp)
+                    )
+                }
+
+                IconButton(
+                    onClick = onSkipNext,
+                    modifier = Modifier.size(50.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.SkipNext,
+                        contentDescription = "Next Track",
+                        tint = CrispWhite,
+                        modifier = Modifier.size(36.dp)
+                    )
+                }
+
+                IconButton(onClick = onToggleRepeat) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Icon(
+                            imageVector = if (repeatMode == 1) Icons.Default.RepeatOne else Icons.Default.Repeat,
+                            contentDescription = "Repeat",
+                            tint = if (repeatMode != 0) AuroraCyan else SlateSecondary,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        if (repeatMode != 0) {
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Box(
+                                modifier = Modifier
+                                    .size(4.dp)
+                                    .clip(CircleShape)
+                                    .background(AuroraCyan)
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
+
+            // Bottom Utility Bar: 3 Sleek Translucent Glass Pills (Lyrics, AirPlay / Devices, Queue)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PlayerUtilityPill(
+                    icon = Icons.Default.ChatBubbleOutline,
+                    label = "Lyrics",
+                    isActive = showLyrics,
+                    onClick = {
+                        showLyrics = !showLyrics
+                        if (showLyrics) showQueue = false
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("btn_bottom_lyrics")
+                )
+
+                PlayerUtilityPill(
+                    icon = Icons.Default.Speaker,
+                    label = "Output",
+                    isActive = showDeviceSheet,
+                    onClick = { showDeviceSheet = true },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("btn_bottom_airplay")
+                )
+
+                PlayerUtilityPill(
+                    icon = Icons.AutoMirrored.Filled.QueueMusic,
+                    label = "Queue",
+                    isActive = showQueue,
+                    onClick = {
+                        showQueue = !showQueue
+                        if (showQueue) showLyrics = false
+                    },
+                    modifier = Modifier
+                        .weight(1f)
+                        .testTag("btn_bottom_queue")
+                )
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
+        }
+    }
+
+    if (showDeviceSheet) {
+        val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val outputDevices = remember(showDeviceSheet) {
+            audioManager?.getDevices(AudioManager.GET_DEVICES_OUTPUTS)?.map { device ->
+                val typeLabel = when (device.type) {
+                    AudioDeviceInfo.TYPE_BLUETOOTH_A2DP, AudioDeviceInfo.TYPE_BLUETOOTH_SCO -> "Bluetooth Audio"
+                    AudioDeviceInfo.TYPE_WIRED_HEADSET, AudioDeviceInfo.TYPE_WIRED_HEADPHONES -> "Wired Headphones"
+                    AudioDeviceInfo.TYPE_USB_HEADSET, AudioDeviceInfo.TYPE_USB_DEVICE -> "USB DAC / Audio"
+                    AudioDeviceInfo.TYPE_BUILTIN_SPEAKER -> "Phone Speaker"
+                    else -> "Audio Output"
+                }
+                val name = device.productName?.toString()?.takeIf { it.isNotBlank() } ?: typeLabel
+                "$name ($typeLabel)"
+            }?.distinct() ?: listOf("Phone Speaker")
+        }
+
+        AlertDialog(
+            onDismissRequest = { showDeviceSheet = false },
+            containerColor = MidnightElevated,
+            title = {
+                Text("Audio Output & Devices", color = CrispWhite, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Streaming Engine: ${song.sourceEngine.uppercase()} • $audioQuality",
+                        color = AuroraCyan,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    outputDevices.forEach { dev ->
+                        Row(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clip(RoundedCornerShape(12.dp))
-                                .clickable {
-                                    showLyrics = true
-                                    showQueue = false
-                                }
-                                .testTag("lyrics_preview_card"),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFF1B2921)),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x35FFFFFF))
+                                .background(FrostedGlassSurface)
+                                .border(1.dp, FrostedGlassBorder, RoundedCornerShape(12.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(
-                                            imageVector = Icons.Default.Mic,
-                                            contentDescription = null,
-                                            tint = SpotifyGreen,
-                                            modifier = Modifier.size(14.dp)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "LYRICS",
-                                            color = SpotifyGreen,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            letterSpacing = 1.sp
-                                        )
-                                    }
-                                    Text(
-                                        text = "Tap for Live Karaoke",
-                                        color = SpotifyTextSecondary,
-                                        fontSize = 10.sp
-                                    )
-                                }
-                                Spacer(modifier = Modifier.height(4.dp))
-                                val previewText = when {
-                                    isLoadingLyrics -> "Fetching lyrics..."
-                                    lyrics?.isInstrumental == true -> "Instrumental track 🎵"
-                                    lyrics?.hasSynced == true -> {
-                                        val idx = (lyrics.syncedLyrics.indexOfLast { it.timeMs <= currentPositionMs }).coerceAtLeast(0)
-                                        lyrics.syncedLyrics.getOrNull(idx)?.text ?: lyrics.syncedLyrics.firstOrNull()?.text ?: "Lyrics ready"
-                                    }
-                                    !lyrics?.plainLyrics.isNullOrBlank() -> lyrics.plainLyrics.lines().firstOrNull { it.isNotBlank() } ?: "Lyrics ready"
-                                    else -> "Lyrics available • Tap to view"
-                                }
-                                Text(
-                                    text = previewText,
-                                    color = SpotifyTextPrimary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Bottom Utility Row (Devices Connect, Lyrics, Share, Queue)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(
                                 imageVector = Icons.Default.Speaker,
-                                contentDescription = "Listening Device",
-                                tint = SpotifyGreen,
+                                contentDescription = null,
+                                tint = AuroraCyan,
                                 modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "Spring Connect • Device",
-                                color = SpotifyGreen,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-
-                        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                            Icon(
-                                imageVector = Icons.Default.Mic,
-                                contentDescription = "Lyrics",
-                                tint = if (showLyrics) SpotifyGreen else SpotifyTextSecondary,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable {
-                                        showLyrics = !showLyrics
-                                        if (showLyrics) showQueue = false
-                                    }
-                                    .testTag("btn_bottom_lyrics")
-                            )
-
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Share",
-                                tint = SpotifyTextSecondary,
-                                modifier = Modifier
-                                    .size(20.dp)
-                                    .clickable { /* Share action */ }
-                            )
-
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.QueueMusic,
-                                contentDescription = "Queue",
-                                tint = if (showQueue) SpotifyGreen else SpotifyTextSecondary,
-                                modifier = Modifier
-                                    .size(22.dp)
-                                    .clickable {
-                                        showQueue = !showQueue
-                                        if (showQueue) showLyrics = false
-                                    }
-                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(text = dev, color = CrispWhite, fontSize = 13.sp)
                         }
                     }
-
-                    Spacer(modifier = Modifier.height(8.dp))
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showDeviceSheet = false }) {
+                    Text("Done", color = AuroraCyan, fontWeight = FontWeight.Bold)
                 }
             }
-        }
+        )
+    }
+}
+
+@Composable
+private fun FullPlayerWaveformSection(
+    song: Song,
+    isPlaying: Boolean,
+    positionFlow: StateFlow<Long>?,
+    durationFlow: StateFlow<Long>?,
+    onSeekTo: (Long) -> Unit
+) {
+    val currentPositionMs by positionFlow?.collectAsState() ?: remember { mutableStateOf(0L) }
+    val durationMs by durationFlow?.collectAsState() ?: remember { mutableStateOf(song.durationMs) }
+    val effectiveDuration = if (durationMs > 0) durationMs else song.durationMs.coerceAtLeast(1000L)
+    val calculatedProgress = (currentPositionMs.toFloat() / effectiveDuration.toFloat()).coerceIn(0f, 1f)
+
+    InteractiveWaveformScrubber(
+        progress = calculatedProgress,
+        isPlaying = isPlaying,
+        seedKey = song.id + song.title,
+        onSeekProgress = { fraction ->
+            val targetMs = (fraction * effectiveDuration).toLong()
+            onSeekTo(targetMs)
+        },
+        modifier = Modifier.testTag("full_player_waveform")
+    )
+
+    Spacer(modifier = Modifier.height(6.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = formatDuration(currentPositionMs),
+            style = TextStyle(
+                fontFamily = AuroraDisplayFontFamily,
+                color = SlateSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                fontFeatureSettings = "tnum"
+            )
+        )
+        Text(
+            text = formatRemainingDuration(currentPositionMs, effectiveDuration),
+            style = TextStyle(
+                fontFamily = AuroraDisplayFontFamily,
+                color = SlateSecondary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Medium,
+                fontFeatureSettings = "tnum"
+            )
+        )
+    }
+}
+
+@Composable
+private fun LyricsStage(
+    lyrics: SongLyrics?,
+    isLoading: Boolean,
+    positionFlow: StateFlow<Long>?,
+    onSeekTo: (Long) -> Unit,
+    onRetry: () -> Unit,
+    onClose: () -> Unit
+) {
+    val currentPositionMs by positionFlow?.collectAsState() ?: remember { mutableStateOf(0L) }
+    LyricsView(
+        lyrics = lyrics,
+        isLoading = isLoading,
+        currentPositionMs = currentPositionMs,
+        primaryColor = AuroraCyan,
+        onSeekTo = onSeekTo,
+        onRetry = onRetry,
+        onClose = onClose,
+        modifier = Modifier.fillMaxSize()
+    )
+}
+
+@Composable
+private fun PlayerUtilityPill(
+    icon: ImageVector,
+    label: String,
+    isActive: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .height(42.dp)
+            .clip(RoundedCornerShape(21.dp))
+            .background(if (isActive) AuroraCyan.copy(alpha = 0.22f) else FrostedGlassSurface)
+            .border(
+                width = 1.dp,
+                color = if (isActive) AuroraCyan.copy(alpha = 0.7f) else FrostedGlassBorder,
+                shape = RoundedCornerShape(21.dp)
+            )
+            .bouncyClick { onClick() }
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (isActive) AuroraCyan else SlateSecondary,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = label,
+            color = if (isActive) AuroraCyan else CrispWhite,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1
+        )
     }
 }

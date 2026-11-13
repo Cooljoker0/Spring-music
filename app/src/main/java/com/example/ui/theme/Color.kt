@@ -2,46 +2,65 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Spotify Official Signature Color Palette
-val SpotifyGreen = Color(0xFF1DB954)
-val SpotifyGreenBright = Color(0xFF1ED760)
-val SpotifyGreenDark = Color(0xFF169C46)
+// Luxury Obsidian Champagne & Imperial Velvet Palette
+val MidnightCanvas = Color(0xFF06060A) // Deepest Velvet Obsidian (Level 0)
+val MidnightElevated = Color(0xFF101119) // Smoked Charcoal (Level 1)
+val FrostedGlassSurface = Color(0xD9171924) // Rich Satin Obsidian Glass (Level 2, 85%)
+val FrostedGlassLight = Color(0xE6222536) // Elevated Satin Glass (Level 3)
+val FrostedGlassBorder = Color(0x36EAD5A8) // Warm Brushed Champagne Rim
+val FrostedGlassHighlight = Color(0x66F7E2AE) // Specular Sunlit Gold Rim
 
-// Spotify Backgrounds & Surfaces
-val SpotifyPitchBlack = Color(0xFF000000)
-val SpotifyBlack = Color(0xFF121212)
-val SpotifySurface = Color(0xFF181818)
-val SpotifyCard = Color(0xFF242424)
-val SpotifyCardElevated = Color(0xFF2A2A2A)
-val SpotifyMiniPlayer = Color(0xFF282828)
-val SpotifyBorder = Color(0xFF333333)
+// Signature Luxury Accents
+val AuroraCyan = Color(0xFFE8C57B) // Brushed Champagne Gold (Primary Luxury Accent)
+val GoldBright = Color(0xFFF7E2AE) // Sunlit Champagne Highlight
+val GoldBronze = Color(0xFFB5893D) // Burnished Antique Bronze
+val AuroraViolet = Color(0xFF8B6EFF) // Imperial Amethyst Indigo
+val AuroraMagenta = Color(0xFFE07A96) // Velvet Rose-Copper
+val IosEmerald = Color(0xFF34D399) // Emerald Jewel
+val IosRed = Color(0xFFFB7185) // Velvet Ruby
 
-// Typography
-val SpotifyTextPrimary = Color(0xFFFFFFFF)
-val SpotifyTextSecondary = Color(0xFFB3B3B3)
-val SpotifyTextMuted = Color(0xFF7A7A7A)
+// Typography Colors (WCAG 2.2 AA >= 4.5:1 on Obsidian & Satin Surfaces)
+val CrispWhite = Color(0xFFFBF8F2) // Warm Ivory Pearl
+val SlateSecondary = Color(0xFFC4BFB6) // Warm Platinum Silver (~9.1:1 on card)
+val SlateMuted = Color(0xFF97928A) // Refined Muted Platinum (~5.2:1 on card)
 
-// Spotify Liked Songs Gradient
-val SpotifyLikedPurpleStart = Color(0xFF450AF5)
-val SpotifyLikedPurpleEnd = Color(0xFF8E8EE5)
+// Harmonized App Theme Aliases (ensures seamless cohesion across all components)
+val SpotifyGreen = AuroraCyan
+val SpotifyGreenBright = Color(0xFFF3D99B)
+val SpotifyGreenDark = Color(0xFFB8924A)
+
+val SpotifyPitchBlack = MidnightCanvas
+val SpotifyBlack = MidnightCanvas
+val SpotifySurface = MidnightElevated
+val SpotifyCard = FrostedGlassSurface
+val SpotifyCardElevated = Color(0xDB1C1D28)
+val SpotifyMiniPlayer = FrostedGlassSurface
+val SpotifyBorder = FrostedGlassBorder
+
+val SpotifyTextPrimary = CrispWhite
+val SpotifyTextSecondary = SlateSecondary
+val SpotifyTextMuted = SlateMuted
+
+val SpotifyLikedPurpleStart = AuroraViolet
+val SpotifyLikedPurpleEnd = AuroraMagenta
 
 // Backward Compatibility Aliases
-val DarkBackground = SpotifyBlack
-val DarkSurface = SpotifySurface
-val DarkSurfaceElevated = SpotifyCard
-val DarkSurfaceCard = SpotifyCard
-val DarkSurfaceBorder = SpotifyBorder
-val SpringEmerald = SpotifyGreen
-val SpringEmeraldLight = SpotifyGreenBright
+val DarkBackground = MidnightCanvas
+val DarkSurface = MidnightElevated
+val DarkSurfaceElevated = FrostedGlassSurface
+val DarkSurfaceCard = FrostedGlassSurface
+val DarkSurfaceBorder = FrostedGlassBorder
+val SpringEmerald = AuroraCyan
+val SpringEmeraldLight = Color(0xFFF3D99B)
 val SpringEmeraldDark = SpotifyGreenDark
-val SpringCyan = Color(0xFF2E77D0)
-val SpringCyanLight = Color(0xFF509BF5)
-val SpringIndigo = SpotifyLikedPurpleStart
-val SpringViolet = SpotifyLikedPurpleEnd
-val TextPrimary = SpotifyTextPrimary
-val TextSecondary = SpotifyTextSecondary
-val TextMuted = SpotifyTextMuted
-val AccentRose = Color(0xFFE91429)
-val AccentAmber = Color(0xFFE8630A)
-val GlassWhite = Color(0x1AFFFFFF)
-val GlassWhiteBorder = Color(0x33FFFFFF)
+val SpringCyan = AuroraCyan
+val SpringCyanLight = Color(0xFFF5DFB0)
+val SpringIndigo = AuroraViolet
+val SpringViolet = AuroraMagenta
+val TextPrimary = CrispWhite
+val TextSecondary = SlateSecondary
+val TextMuted = SlateMuted
+val AccentRose = AuroraMagenta
+val AccentAmber = Color(0xFFF5C469)
+val GlassWhite = Color(0x1AF5E6C8)
+val GlassWhiteBorder = FrostedGlassBorder
