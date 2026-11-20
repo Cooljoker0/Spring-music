@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SpringMusic.V27" parent="Theme.SpringMusic.Base">
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+
+    <style name="Theme.SpringMusic" parent="Theme.SpringMusic.V27" />
+</resources>

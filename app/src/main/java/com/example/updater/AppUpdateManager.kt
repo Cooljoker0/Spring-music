@@ -623,7 +623,7 @@ object AppUpdateManager {
                                     val mbDownloaded = downloadedBytes / (1024.0 * 1024.0)
                                     val mbTotal = totalBytes / (1024.0 * 1024.0)
                                     val speed = mbDownloaded / elapsedSec
-                                    _downloadSpeedText.value = String.format("%.1f MB / %.1f MB (%.1f MB/s)", mbDownloaded, mbTotal, speed)
+                                    _downloadSpeedText.value = String.format(java.util.Locale.US, "%.1f MB / %.1f MB (%.1f MB/s)", mbDownloaded, mbTotal, speed)
                                 }
                             }
                         }

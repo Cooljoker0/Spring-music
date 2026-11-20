@@ -1,12 +1,5 @@
 package com.example.ui
 
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -34,7 +27,6 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -50,9 +42,6 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -85,7 +74,6 @@ import com.example.ui.theme.MidnightCanvas
 import com.example.ui.theme.MidnightElevated
 import com.example.ui.theme.SlateSecondary
 import java.util.Calendar
-import kotlin.math.sin
 
 @Composable
 fun HomeScreen(
@@ -129,14 +117,6 @@ fun HomeScreen(
             combined.putIfAbsent(it.id, it)
         }
         combined.values.take(8)
-    }
-
-    val peakMixSongs = remember(recommendationsState.sections, quickGridTracks) {
-        recommendationsState.sections.firstOrNull {
-            it.categoryKey.contains("daily", true) || it.categoryKey.contains("for_you", true)
-        }?.songs?.takeIf { it.isNotEmpty() }
-            ?: recommendationsState.sections.flatMap { it.songs }.distinctBy { it.id }.take(15)
-                .ifEmpty { quickGridTracks }
     }
 
     val ambientColors = remember(currentSong?.id, currentSong?.mood) { FusionAmbience.getColors(currentSong) }
@@ -424,32 +404,7 @@ fun HomeScreen(
                 }
             }
 
-            // 3. Featured Hero Banner: "Peak Hours Mix" over holographic mesh gradient + waveform + centered frosted Play
-            item(key = "hero_banner", contentType = "hero_banner") {
-                PeakHoursHeroBanner(
-                    subtitle = if (peakMixSongs.isNotEmpty()) "${peakMixSongs.size} high-energy curated tracks" else "Adaptive sonic wave • Updated daily",
-                    onPlay = {
-                        if (peakMixSongs.isNotEmpty()) {
-                            onSongSelected(peakMixSongs.first(), peakMixSongs)
-                        } else {
-                            onMoodClick(
-                                MoodCategory(
-                                    id = "peak_hours",
-                                    title = "Peak Hours Mix",
-                                    description = "High energy mixes",
-                                    searchTag = "Peak Hours Workout Electronic Pop",
-                                    emoji = "⚡",
-                                    gradientStart = 0xFF38BDF8,
-                                    gradientEnd = 0xFFEC4899
-                                )
-                            )
-                        }
-                    },
-                    onOpenImport = onOpenImport
-                )
-            }
-
-            // 4. Quick Launch Carousel: 72dp Circular Artist Portraits with Multi-Color Gradient Rings
+            // 3. Quick Launch Carousel: 72dp Circular Artist Portraits with Multi-Color Gradient Rings
             item(key = "quick_launch", contentType = "quick_launch") {
                 Column(modifier = Modifier.padding(top = 18.dp)) {
                     Row(
@@ -664,166 +619,6 @@ fun HomeScreen(
                     }
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun PeakHoursHeroBanner(
-    subtitle: String,
-    onPlay: () -> Unit,
-    onOpenImport: () -> Unit
-) {
-    val infiniteTransition = rememberInfiniteTransition(label = "hero_wave")
-    val wavePhase by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = (Math.PI * 2).toFloat(),
-        animationSpec = infiniteRepeatable(
-            animation = tween(3200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "wave_phase"
-    )
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 10.dp)
-            .height(184.dp)
-            .shadow(
-                elevation = 24.dp,
-                shape = RoundedCornerShape(20.dp),
-                ambientColor = AuroraViolet.copy(alpha = 0.45f),
-                spotColor = AuroraMagenta.copy(alpha = 0.45f)
-            )
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(
-                        Color(0xFF171324),
-                        Color(0xFF281D3B),
-                        Color(0xFF3A222D)
-                    )
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(listOf(Color(0x55F5E6C8), FrostedGlassBorder)),
-                shape = RoundedCornerShape(20.dp)
-            )
-            .bouncyClick(pressedScale = 0.97f) { onPlay() }
-            .testTag("hero_peak_hours_banner")
-    ) {
-        // Holographic mesh glow orbs + animated waveform graphic (zero per-frame Path allocation)
-        val pathPrimary = remember { Path() }
-        val pathSecondary = remember { Path() }
-        val waveBrush = remember { Brush.horizontalGradient(listOf(AuroraCyan, Color.White, AuroraMagenta)) }
-
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(AuroraCyan.copy(alpha = 0.42f), Color.Transparent)
-                ),
-                radius = size.width * 0.45f,
-                center = Offset(size.width * 0.16f, size.height * 0.25f)
-            )
-            drawCircle(
-                brush = Brush.radialGradient(
-                    listOf(AuroraMagenta.copy(alpha = 0.45f), Color.Transparent)
-                ),
-                radius = size.width * 0.5f,
-                center = Offset(size.width * 0.85f, size.height * 0.8f)
-            )
-
-            pathPrimary.reset()
-            pathSecondary.reset()
-            val midY = size.height * 0.52f
-            val steps = 40
-            for (i in 0..steps) {
-                val x = (i.toFloat() / steps) * size.width
-                val norm = i.toFloat() / steps
-                val env = sin(norm * Math.PI).toFloat()
-                val y1 = midY + sin(norm * 10f + wavePhase) * 28f * env
-                val y2 = midY + sin(norm * 7f - wavePhase * 1.2f) * 20f * env
-                if (i == 0) {
-                    pathPrimary.moveTo(x, y1)
-                    pathSecondary.moveTo(x, y2)
-                } else {
-                    pathPrimary.lineTo(x, y1)
-                    pathSecondary.lineTo(x, y2)
-                }
-            }
-            drawPath(
-                path = pathSecondary,
-                color = AuroraCyan.copy(alpha = 0.4f),
-                style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-            )
-            drawPath(
-                path = pathPrimary,
-                brush = waveBrush,
-                style = Stroke(width = 3.5.dp.toPx(), cap = StrokeCap.Round)
-            )
-        }
-
-        // Top badge
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(14.dp)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Color(0x6607070B))
-                .border(0.8.dp, Color(0x45EAD9B7), RoundedCornerShape(20.dp))
-                .padding(horizontal = 10.dp, vertical = 4.dp)
-        ) {
-            Text(
-                text = "FEATURED MIX",
-                color = AuroraCyan,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = 1.sp
-            )
-        }
-
-        // Centered Luminous Champagne-Rimmed Play Button
-        Box(
-            modifier = Modifier
-                .align(Alignment.Center)
-                .size(62.dp)
-                .shadow(18.dp, CircleShape, ambientColor = AuroraCyan, spotColor = Color.Black)
-                .clip(CircleShape)
-                .background(FusionAmbience.GoldMetallicBrush)
-                .border(1.4.dp, GoldBright, CircleShape)
-                .bouncyClick(pressedScale = 0.90f) { onPlay() }
-                .testTag("btn_hero_peak_play"),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.PlayArrow,
-                contentDescription = "Play Peak Hours Mix",
-                tint = MidnightCanvas,
-                modifier = Modifier.size(34.dp)
-            )
-        }
-
-        // Bottom left title & subtitle
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(horizontal = 16.dp, vertical = 14.dp)
-        ) {
-            Text(
-                text = "Peak Hours Mix",
-                color = CrispWhite,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.ExtraBold,
-                letterSpacing = (-0.4).sp
-            )
-            Text(
-                text = subtitle,
-                color = Color(0xDDEBEBF5),
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Medium
-            )
         }
     }
 }

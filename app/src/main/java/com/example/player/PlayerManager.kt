@@ -152,10 +152,14 @@ class PlayerManager(private val context: Context) {
 
             val currentId = mediaItem?.mediaId ?: return
             val match = _queue.value.find { it.id == currentId }
+                ?: mediaItem.let { Song.fromMediaItem(it) }
             if (match != null) {
                 val active = listenedPlayer ?: getActivePlayer()
                 if (active != null && (active.playbackParameters.speed != 1.0f || active.playbackParameters.pitch != 1.0f)) {
                     active.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+                }
+                if (_queue.value.none { it.id == match.id }) {
+                    _queue.value = _queue.value + match
                 }
                 if (lastStartedTrackId != match.id) {
                     streamBaseOffsetMs = 0L
@@ -219,8 +223,45 @@ class PlayerManager(private val context: Context) {
         if (player.duration > 0L) {
             _durationMs.value = player.duration
         }
+        val activeItem = player.currentMediaItem
+        if (activeItem != null && _currentSong.value == null) {
+            val activeSong = _queue.value.find { it.id == activeItem.mediaId } ?: Song.fromMediaItem(activeItem)
+            if (activeSong != null) {
+                _currentSong.value = activeSong
+                lastActiveSong = activeSong
+                if (_queue.value.isEmpty()) {
+                    val items = (0 until player.mediaItemCount).mapNotNull { idx ->
+                        Song.fromMediaItem(player.getMediaItemAt(idx))
+                    }
+                    if (items.isNotEmpty()) _queue.value = items
+                }
+            }
+        }
         if (player.isPlaying) {
             startProgressTracking()
+        }
+    }
+
+    fun syncExternalPlayback(songs: List<Song>, current: Song) {
+        scope.launch {
+            streamBaseOffsetMs = 0L
+            _currentPositionMs.value = 0L
+            _bufferedPositionMs.value = 0L
+            if (songs.isNotEmpty()) {
+                _queue.value = songs
+            } else if (_queue.value.none { it.id == current.id }) {
+                _queue.value = listOf(current)
+            }
+            _currentSong.value = current
+            _durationMs.value = current.durationMs.coerceAtLeast(0L)
+            lastActiveSong = current
+            if (lastStartedTrackId != current.id) {
+                lastStartedTrackId = current.id
+                songPlayStartTimeMs = System.currentTimeMillis()
+                recordSongPlayed(current, 0L, isCompleted = false, isSkipped = false)
+                loadLyricsForSong(current)
+                scheduleSimilarSongs(current)
+            }
         }
     }
 

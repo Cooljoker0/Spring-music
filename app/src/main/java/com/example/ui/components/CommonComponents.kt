@@ -897,12 +897,12 @@ fun formatDuration(ms: Long): String {
     val totalSeconds = (ms / 1000).coerceAtLeast(0)
     val minutes = totalSeconds / 60
     val seconds = totalSeconds % 60
-    return String.format("%d:%02d", minutes, seconds)
+    return String.format(java.util.Locale.US, "%d:%02d", minutes, seconds)
 }
 
 fun formatRemainingDuration(currentMs: Long, durationMs: Long): String {
     val remainingSec = ((durationMs - currentMs).coerceAtLeast(0L) / 1000L)
     val minutes = remainingSec / 60
     val seconds = remainingSec % 60
-    return String.format("-%d:%02d", minutes, seconds)
+    return String.format(java.util.Locale.US, "-%d:%02d", minutes, seconds)
 }

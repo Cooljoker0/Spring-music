@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SpringMusic" parent="Theme.SpringMusic.V27">
+        <item name="android:windowSplashScreenBackground">@color/spotify_black</item>
+    </style>
+</resources>

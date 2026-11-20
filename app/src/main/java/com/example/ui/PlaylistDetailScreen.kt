@@ -387,7 +387,7 @@ fun PlaylistDetailScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            text = String.format("%02d", index + 1),
+                            text = String.format(java.util.Locale.US, "%02d", index + 1),
                             color = if (isCurrent) AuroraCyan else SlateMuted,
                             fontSize = 12.sp,
                             fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,

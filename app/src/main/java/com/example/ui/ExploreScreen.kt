@@ -517,7 +517,7 @@ private fun TopChartRow(
             modifier = Modifier.width(34.dp)
         ) {
             Text(
-                text = String.format("%02d", rank),
+                text = String.format(Locale.US, "%02d", rank),
                 color = if (rank <= 3) AuroraCyan else CrispWhite,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.ExtraBold

@@ -270,3 +270,11 @@ tasks.register("verifyAppVersionMetadata") {
 tasks.matching { it.name.startsWith("compile") || it.name.startsWith("assemble") || it.name.startsWith("bundle") }.configureEach {
     dependsOn("verifyAppVersionMetadata")
 }
+
+tasks.register<Copy>("syncRootDebugApk") {
+    group = "build"
+    description = "Copies the latest built debug APK to the workspace root."
+    from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
+    into(rootProject.layout.projectDirectory)
+    onlyIf { layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile.exists() }
+}

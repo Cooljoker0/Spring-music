@@ -225,6 +225,63 @@ class MusicRepository(
         }
     }
 
+    suspend fun getUserPlaylistsSync(): List<Playlist> = withContext(Dispatchers.IO) {
+        playlistDao.getAllPlaylistsSync().map { entity ->
+            val songs = parseSongsJson(entity.songsJson)
+            Playlist(
+                id = entity.id,
+                title = entity.title,
+                subtitle = if (entity.isSpotifyImport) "Imported Playlist • ${songs.size} songs" else "${songs.size} songs",
+                coverUrl = entity.coverUrl.ifBlank { songs.firstOrNull()?.coverUrl.orEmpty() },
+                songCount = songs.size,
+                songs = songs
+            )
+        }
+    }
+
+    suspend fun findSongById(songId: String): Song? = withContext(Dispatchers.IO) {
+        if (songId.isBlank()) return@withContext null
+        songDao.getSongById(songId)?.toSong()?.let { return@withContext it }
+        _topChartsState.value.find { it.id == songId }?.let { return@withContext it }
+        recommendationsState.value.sections.asSequence()
+            .flatMap { it.songs.asSequence() }
+            .firstOrNull { it.id == songId }
+            ?.let { return@withContext it }
+        recommendationsState.value.discoverWeekly.find { it.id == songId }?.let { return@withContext it }
+        getUserPlaylistsSync().asSequence()
+            .flatMap { it.songs.asSequence() }
+            .firstOrNull { it.id == songId }
+    }
+
+    suspend fun ensureRecommendationsLoaded(): RecommendationSectionsState = withContext(Dispatchers.IO) {
+        val current = recommendationsState.value
+        if (current.sections.isNotEmpty()) return@withContext current
+        try {
+            recommendationEngine.initialize()
+        } catch (e: Exception) {
+            android.util.Log.w("MusicRepository", "ensureRecommendationsLoaded failed: ${e.message}")
+        }
+        recommendationsState.value
+    }
+
+    suspend fun getTopChartsSync(): List<Song> = withContext(Dispatchers.IO) {
+        val cached = _topChartsState.value
+        if (cached.isNotEmpty()) return@withContext cached
+        val trendingFromRecs = recommendationsState.value.sections.firstOrNull {
+            it.categoryKey.contains("trending", true) || it.categoryKey.contains("popular", true)
+        }?.songs.orEmpty()
+        val liveCharts = try {
+            searchSongs("Top 50 Global Hits", "Charts")
+        } catch (_: Exception) {
+            emptyList()
+        }
+        val combined = (liveCharts + trendingFromRecs).distinctBy { it.id }.take(15)
+        if (combined.isNotEmpty()) {
+            _topChartsState.value = combined
+        }
+        combined
+    }
+
     suspend fun searchSongs(query: String, moodTag: String = "Spring Vibe"): List<Song> = withContext(Dispatchers.IO) {
         try {
             // Priority 1: Direct JioSaavn API with decrypted high-speed 320kbps CDN audio
