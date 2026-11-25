@@ -8,8 +8,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -32,17 +33,22 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.QueuePlayNext
+import androidx.compose.material.icons.filled.Radio
+import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -57,8 +63,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -74,37 +78,34 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.Song
-import com.example.ui.theme.AuroraCyan
-import com.example.ui.theme.AuroraMagenta
-import com.example.ui.theme.AuroraViolet
-import com.example.ui.theme.CrispWhite
-import com.example.ui.theme.FrostedGlassBorder
-import com.example.ui.theme.FrostedGlassSurface
-import com.example.ui.theme.FusionAmbience
-import com.example.ui.theme.GoldBright
-import com.example.ui.theme.IosEmerald
-import com.example.ui.theme.MidnightCanvas
-import com.example.ui.theme.MidnightElevated
-import com.example.ui.theme.SlateMuted
-import com.example.ui.theme.SlateSecondary
+import com.example.ui.theme.CustomAppTheme
+import com.example.ui.theme.DarkGlassOpaque
+import com.example.ui.theme.DestructiveRose
+import com.example.ui.theme.DisplayFontFamily
+import com.example.ui.theme.Graphite
+import com.example.ui.theme.GraphiteElevated
+import com.example.ui.theme.LocalAppCustomTheme
+import com.example.ui.theme.MidnightBlack
+import com.example.ui.theme.MutedGrey
+import com.example.ui.theme.Silver
+import com.example.ui.theme.SoftWhite
+import com.example.ui.theme.WhiteHighlight
+import com.example.ui.theme.WhiteHighlightSoft
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.abs
 import kotlin.math.sin
 
-/**
- * Tactile iOS spring bounce press modifier for fluid responsiveness.
- */
 fun Modifier.bouncyClick(
     enabled: Boolean = true,
-    pressedScale: Float = 0.96f,
+    pressedScale: Float = 0.975f,
     onClick: () -> Unit
 ): Modifier = composed {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
         targetValue = if (isPressed && enabled) pressedScale else 1f,
-        animationSpec = spring(dampingRatio = 0.65f, stiffness = 550f),
-        label = "bouncy_scale"
+        animationSpec = spring(dampingRatio = 0.80f, stiffness = 540f),
+        label = "press_scale"
     )
     this
         .graphicsLayer {
@@ -113,20 +114,17 @@ fun Modifier.bouncyClick(
         }
         .clickable(
             interactionSource = interactionSource,
-            indication = null,
+            indication = LocalIndication.current,
             enabled = enabled,
             onClick = onClick
         )
 }
 
-/**
- * Pure Canvas-drawn audio frequency waveform bars (zero per-frame relayouts).
- */
 @Composable
 fun AnimatedEqualizer(
     isPlaying: Boolean,
     modifier: Modifier = Modifier,
-    barColor: Color = AuroraCyan
+    barColor: Color = SoftWhite
 ) {
     val phase = if (isPlaying) {
         val infiniteTransition = rememberInfiniteTransition(label = "eq_wave")
@@ -134,7 +132,7 @@ fun AnimatedEqualizer(
             initialValue = 0f,
             targetValue = (Math.PI * 2).toFloat(),
             animationSpec = infiniteRepeatable(
-                animation = tween(1100, easing = FastOutSlowInEasing),
+                animation = tween(1050, easing = FastOutSlowInEasing),
                 repeatMode = RepeatMode.Restart
             ),
             label = "eq_phase"
@@ -146,25 +144,25 @@ fun AnimatedEqualizer(
 
     Canvas(
         modifier = modifier
-            .width(16.dp)
-            .height(16.dp)
+            .width(14.dp)
+            .height(14.dp)
     ) {
-        val barCount = 4
+        val barCount = 3
         val gap = 2.dp.toPx()
         val barWidth = (size.width - gap * (barCount - 1)) / barCount
-        val staticHeights = floatArrayOf(0.35f, 0.58f, 0.45f, 0.30f)
+        val staticHeights = floatArrayOf(0.40f, 0.72f, 0.50f)
 
         for (i in 0 until barCount) {
             val hFraction = if (isPlaying) {
-                (0.28f + 0.68f * abs(sin(phase + i * 1.15f))).coerceIn(0.22f, 1.0f)
+                (0.28f + 0.68f * abs(sin(phase + i * 1.25f))).coerceIn(0.25f, 1.0f)
             } else {
                 staticHeights[i]
             }
             val barH = (size.height * hFraction).coerceAtLeast(3.dp.toPx())
             val x = i * (barWidth + gap)
-            val y = (size.height - barH) / 2f
+            val y = size.height - barH
             drawRoundRect(
-                color = if (i % 2 == 0) barColor else AuroraViolet,
+                color = barColor,
                 topLeft = Offset(x, y),
                 size = Size(barWidth, barH),
                 cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
@@ -173,10 +171,6 @@ fun AnimatedEqualizer(
     }
 }
 
-/**
- * Interactive real-time audio frequency waveform scrubber (cyan-to-violet gradient fill).
- * Only animates pulse when actively playing to save GPU cycles when paused.
- */
 @Composable
 fun InteractiveWaveformScrubber(
     progress: Float,
@@ -208,21 +202,17 @@ fun InteractiveWaveformScrubber(
     val baseBars = remember(seedKey) {
         val seed = abs(seedKey.hashCode())
         List(44) { idx ->
-            val wave = 0.38f + 0.52f * abs(sin((idx * 0.42f) + (seed % 17))).toFloat()
+            val wave = 0.36f + 0.54f * abs(sin((idx * 0.42f) + (seed % 17))).toFloat()
             wave.coerceIn(0.22f, 1.0f)
         }
     }
 
-    val activeBrush = remember {
-        Brush.horizontalGradient(
-            colors = listOf(GoldBright, AuroraCyan, AuroraViolet, AuroraMagenta)
-        )
-    }
+    val theme = LocalAppCustomTheme.current
 
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(42.dp)
+            .height(44.dp)
             .pointerInput(seedKey) {
                 detectTapGestures { offset ->
                     val fraction = (offset.x / size.width.coerceAtLeast(1)).coerceIn(0f, 1f)
@@ -251,90 +241,77 @@ fun InteractiveWaveformScrubber(
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val count = baseBars.size
-            val totalSpacing = size.width * 0.34f
+            val totalSpacing = size.width * 0.38f
             val barWidth = ((size.width - totalSpacing) / count).coerceAtLeast(2.5f)
             val gap = totalSpacing / (count - 1).coerceAtLeast(1)
             val centerY = size.height / 2f
-            val inactiveColor = Color(0x36EBEBF5)
+            val inactiveColor = Color(0x30FFFFFF)
 
             baseBars.forEachIndexed { index, baseAmp ->
                 val barFraction = index.toFloat() / (count - 1).coerceAtLeast(1)
                 val isLit = barFraction <= activeProgress
 
                 val liveMod = if (isPlaying && isLit) {
-                    1f + 0.16f * sin(pulsePhase + index * 0.65f)
+                    1f + 0.10f * sin(pulsePhase + index * 0.65f)
                 } else {
                     1f
                 }
-                val barHeight = (size.height * 0.85f * baseAmp * liveMod)
-                    .coerceIn(size.height * 0.16f, size.height * 0.94f)
+                val barHeight = (size.height * 0.80f * baseAmp * liveMod)
+                    .coerceIn(size.height * 0.16f, size.height * 0.88f)
                 val x = index * (barWidth + gap)
                 val y = centerY - barHeight / 2f
 
-                if (isLit) {
-                    drawRoundRect(
-                        brush = activeBrush,
-                        topLeft = Offset(x, y),
-                        size = Size(barWidth, barHeight),
-                        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
-                    )
-                } else {
-                    drawRoundRect(
-                        color = inactiveColor,
-                        topLeft = Offset(x, y),
-                        size = Size(barWidth, barHeight),
-                        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
-                    )
-                }
+                drawRoundRect(
+                    color = if (isLit) theme.primaryColor else inactiveColor,
+                    topLeft = Offset(x, y),
+                    size = Size(barWidth, barHeight),
+                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f)
+                )
             }
         }
     }
 }
 
-/**
- * Custom iOS-style switch with Emerald green (#34C759) active track and spring thumb.
- */
 @Composable
 fun IosAuroraSwitch(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
     modifier: Modifier = Modifier,
-    activeColor: Color = IosEmerald
+    activeColor: Color = SoftWhite
 ) {
     val thumbOffset by animateFloatAsState(
-        targetValue = if (checked) 20f else 2f,
-        animationSpec = spring(dampingRatio = 0.72f, stiffness = 420f),
-        label = "ios_switch"
+        targetValue = if (checked) 21f else 2f,
+        animationSpec = spring(dampingRatio = 0.78f, stiffness = 460f),
+        label = "switch_thumb"
     )
 
     Box(
         modifier = modifier
-            .width(50.dp)
-            .height(30.dp)
-            .clip(CircleShape)
-            .background(if (checked) activeColor else Color(0x33EBEBF5))
-            .border(
-                width = 0.8.dp,
-                color = if (checked) activeColor.copy(alpha = 0.8f) else FrostedGlassBorder,
-                shape = CircleShape
-            )
+            .size(width = 52.dp, height = 48.dp)
+            .clip(RoundedCornerShape(24.dp))
             .clickable { onCheckedChange(!checked) },
-        contentAlignment = Alignment.CenterStart
+        contentAlignment = Alignment.Center
     ) {
         Box(
             modifier = Modifier
-                .offset(x = thumbOffset.dp)
-                .size(26.dp)
-                .shadow(4.dp, CircleShape, ambientColor = Color.Black, spotColor = Color.Black)
+                .width(48.dp)
+                .height(28.dp)
                 .clip(CircleShape)
-                .background(Color.White)
-        )
+                .background(if (checked) activeColor else Color(0x2EFFFFFF))
+                .border(0.8.dp, if (checked) activeColor else WhiteHighlight, CircleShape),
+            contentAlignment = Alignment.CenterStart
+        ) {
+            Box(
+                modifier = Modifier
+                    .offset(x = thumbOffset.dp)
+                    .size(23.dp)
+                    .clip(CircleShape)
+                    .background(if (checked) MidnightBlack else SoftWhite)
+            )
+        }
     }
 }
 
-/**
- * Frosted Dark-Glass Song Row Item
- */
 @Composable
 fun SongRowItem(
     song: Song,
@@ -343,24 +320,24 @@ fun SongRowItem(
     onClick: () -> Unit,
     onFavoriteToggle: () -> Unit,
     onDownloadClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onPlayNext: (() -> Unit)? = null,
+    onAddToQueue: (() -> Unit)? = null,
+    onAddToPlaylist: (() -> Unit)? = null,
+    onStartRadio: (() -> Unit)? = null,
+    onRemoveFromPlaylist: (() -> Unit)? = null
 ) {
-    val ambientColors = remember(song.id, song.mood) { FusionAmbience.getColors(song) }
-    val rowAccent = ambientColors.firstOrNull() ?: AuroraCyan
+    val theme = LocalAppCustomTheme.current
+    var showOverflowMenu by remember { mutableStateOf(false) }
 
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 3.dp)
+            .padding(horizontal = 12.dp, vertical = 2.dp)
             .clip(RoundedCornerShape(14.dp))
-            .background(if (isCurrent) FrostedGlassSurface else Color.Transparent)
-            .border(
-                width = if (isCurrent) 1.dp else 0.dp,
-                color = if (isCurrent) rowAccent.copy(alpha = 0.45f) else Color.Transparent,
-                shape = RoundedCornerShape(14.dp)
-            )
+            .background(if (isCurrent) WhiteHighlightSoft else Color.Transparent)
             .clickable { onClick() }
-            .padding(horizontal = 10.dp, vertical = 9.dp)
+            .padding(horizontal = 8.dp, vertical = 8.dp)
             .testTag("song_row_${song.id}"),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -368,8 +345,8 @@ fun SongRowItem(
             modifier = Modifier
                 .size(50.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .border(0.8.dp, FrostedGlassBorder, RoundedCornerShape(10.dp))
-                .background(MidnightElevated),
+                .background(theme.cardBackground)
+                .border(0.6.dp, WhiteHighlightSoft, RoundedCornerShape(10.dp)),
             contentAlignment = Alignment.Center
         ) {
             if (song.coverUrl.isNotBlank()) {
@@ -383,8 +360,8 @@ fun SongRowItem(
                 Icon(
                     imageVector = Icons.Default.MusicNote,
                     contentDescription = null,
-                    tint = rowAccent,
-                    modifier = Modifier.size(24.dp)
+                    tint = MutedGrey,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
@@ -392,10 +369,10 @@ fun SongRowItem(
                 Box(
                     modifier = Modifier
                         .matchParentSize()
-                        .background(Color.Black.copy(alpha = 0.45f)),
+                        .background(MidnightBlack.copy(alpha = 0.56f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    AnimatedEqualizer(isPlaying = isPlaying, barColor = rowAccent)
+                    AnimatedEqualizer(isPlaying = isPlaying, barColor = SoftWhite)
                 }
             }
         }
@@ -405,7 +382,7 @@ fun SongRowItem(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = song.title,
-                color = if (isCurrent) AuroraCyan else CrispWhite,
+                color = SoftWhite,
                 fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.SemiBold,
                 fontSize = 15.sp,
                 maxLines = 1,
@@ -417,7 +394,7 @@ fun SongRowItem(
                     Icon(
                         imageVector = Icons.Default.CheckCircle,
                         contentDescription = "Downloaded",
-                        tint = IosEmerald,
+                        tint = Silver,
                         modifier = Modifier
                             .size(13.dp)
                             .padding(end = 4.dp)
@@ -425,7 +402,7 @@ fun SongRowItem(
                 }
                 Text(
                     text = song.artist,
-                    color = SlateSecondary,
+                    color = Silver,
                     fontSize = 13.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -442,31 +419,122 @@ fun SongRowItem(
             Icon(
                 imageVector = if (song.isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                 contentDescription = if (song.isFavorite) "Liked" else "Add to Liked Songs",
-                tint = if (song.isFavorite) AuroraMagenta else SlateSecondary,
+                tint = if (song.isFavorite) SoftWhite else MutedGrey,
                 modifier = Modifier.size(20.dp)
             )
         }
 
-        IconButton(
-            onClick = onDownloadClick,
-            modifier = Modifier
-                .size(48.dp)
-                .testTag("btn_download_${song.id}")
-        ) {
-            Icon(
-                imageVector = if (song.isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
-                contentDescription = "Download Options",
-                tint = if (song.isDownloaded) IosEmerald else SlateMuted,
-                modifier = Modifier.size(19.dp)
-            )
+        val hasOverflowActions = onPlayNext != null || onAddToQueue != null || onAddToPlaylist != null || onStartRadio != null || onRemoveFromPlaylist != null
+        if (hasOverflowActions) {
+            Box {
+                IconButton(
+                    onClick = { showOverflowMenu = true },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("btn_more_${song.id}")
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "Track Options",
+                        tint = Silver,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+                DropdownMenu(
+                    expanded = showOverflowMenu,
+                    onDismissRequest = { showOverflowMenu = false },
+                    modifier = Modifier
+                        .background(DarkGlassOpaque)
+                        .border(0.8.dp, WhiteHighlight, RoundedCornerShape(12.dp))
+                ) {
+                    if (onPlayNext != null) {
+                        DropdownMenuItem(
+                            text = { Text("Play Next", color = SoftWhite) },
+                            leadingIcon = { Icon(Icons.Default.QueuePlayNext, contentDescription = null, tint = SoftWhite) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onPlayNext()
+                            }
+                        )
+                    }
+                    if (onAddToQueue != null) {
+                        DropdownMenuItem(
+                            text = { Text("Add to Queue", color = SoftWhite) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.QueueMusic, contentDescription = null, tint = Silver) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onAddToQueue()
+                            }
+                        )
+                    }
+                    if (onAddToPlaylist != null) {
+                        DropdownMenuItem(
+                            text = { Text("Add to Playlist", color = SoftWhite) },
+                            leadingIcon = { Icon(Icons.AutoMirrored.Filled.PlaylistAdd, contentDescription = null, tint = Silver) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onAddToPlaylist()
+                            }
+                        )
+                    }
+                    if (onStartRadio != null) {
+                        DropdownMenuItem(
+                            text = { Text("Start Song Radio", color = SoftWhite) },
+                            leadingIcon = { Icon(Icons.Default.Radio, contentDescription = null, tint = Silver) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onStartRadio()
+                            }
+                        )
+                    }
+                    DropdownMenuItem(
+                        text = { Text(if (song.isDownloaded) "Remove Download" else "Download", color = SoftWhite) },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = if (song.isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
+                                contentDescription = null,
+                                tint = Silver
+                            )
+                        },
+                        onClick = {
+                            showOverflowMenu = false
+                            onDownloadClick()
+                        }
+                    )
+                    if (onRemoveFromPlaylist != null) {
+                        DropdownMenuItem(
+                            text = { Text("Remove from Playlist", color = DestructiveRose) },
+                            leadingIcon = { Icon(Icons.Default.RemoveCircleOutline, contentDescription = null, tint = DestructiveRose) },
+                            onClick = {
+                                showOverflowMenu = false
+                                onRemoveFromPlaylist()
+                            }
+                        )
+                    }
+                }
+            }
+        } else {
+            IconButton(
+                onClick = onDownloadClick,
+                modifier = Modifier
+                    .size(48.dp)
+                    .testTag("btn_download_${song.id}")
+            ) {
+                Icon(
+                    imageVector = if (song.isDownloaded) Icons.Default.CheckCircle else Icons.Default.Download,
+                    contentDescription = "Download Options",
+                    tint = if (song.isDownloaded) SoftWhite else MutedGrey,
+                    modifier = Modifier.size(19.dp)
+                )
+            }
         }
     }
 }
 
 /**
- * Floating Luminous iOS Frosted Mini-Player Pill
- * Isolates progress tick collection inside MiniPlayerProgressRibbon so parent screens never recompose.
- * Supports horizontal swipe left/right to skip tracks seamlessly.
+ * Floating Midnight Liquid Glass Mini-Player sitting seamlessly above Bottom Navigation.
+ * Features translucent graphite depth, specular white edge reflection, playback progress bar,
+ * Play/Pause + Next controls, and swipe left/right track skipping.
  */
 @Composable
 fun MiniPlayer(
@@ -480,61 +548,49 @@ fun MiniPlayer(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val ambientColors = remember(song.id, song.mood) { FusionAmbience.getColors(song) }
-    val accentColor = ambientColors.firstOrNull() ?: AuroraCyan
+    val theme = LocalAppCustomTheme.current
     var swipeDeltaX by remember { mutableFloatStateOf(0f) }
 
-    Card(
+    LiquidGlassSurface(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp)
+            .padding(horizontal = 14.dp)
             .testTag("mini_player")
-            .shadow(
-                elevation = 16.dp,
-                shape = RoundedCornerShape(24.dp),
-                ambientColor = AuroraViolet.copy(alpha = 0.25f),
-                spotColor = Color.Black.copy(alpha = 0.85f)
-            )
             .pointerInput(song.id) {
                 detectHorizontalDragGestures(
                     onDragStart = { swipeDeltaX = 0f },
                     onHorizontalDrag = { _, dragAmount -> swipeDeltaX += dragAmount },
                     onDragEnd = {
-                        if (swipeDeltaX < -90f) {
+                        if (swipeDeltaX < -85f) {
                             onSkipNext()
-                        } else if (swipeDeltaX > 90f) {
+                        } else if (swipeDeltaX > 85f) {
                             onSkipPrevious()
                         }
                         swipeDeltaX = 0f
                     },
                     onDragCancel = { swipeDeltaX = 0f }
                 )
-            }
-            .bouncyClick(pressedScale = 0.985f) { onClick() },
-        shape = RoundedCornerShape(24.dp),
-        border = BorderStroke(
-            width = 1.dp,
-            brush = FusionAmbience.GoldRimBorderBrush
-        ),
-        colors = CardDefaults.cardColors(containerColor = FrostedGlassSurface)
+            },
+        shape = RoundedCornerShape(20.dp),
+        elevation = 16.dp
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(FusionAmbience.miniPlayerBrush(ambientColors))
+                .clickable { onClick() }
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                    .padding(start = 10.dp, end = 6.dp, top = 7.dp, bottom = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
                         .size(44.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .border(0.8.dp, FrostedGlassBorder, RoundedCornerShape(10.dp))
-                        .background(MidnightElevated),
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(theme.cardBackground)
+                        .border(0.6.dp, WhiteHighlight, RoundedCornerShape(11.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     if (song.coverUrl.isNotBlank()) {
@@ -548,28 +604,19 @@ fun MiniPlayer(
                         Icon(
                             imageVector = Icons.Default.MusicNote,
                             contentDescription = null,
-                            tint = accentColor,
-                            modifier = Modifier.size(22.dp)
+                            tint = SoftWhite,
+                            modifier = Modifier.size(20.dp)
                         )
-                    }
-
-                    Box(
-                        modifier = Modifier
-                            .matchParentSize()
-                            .background(Color.Black.copy(alpha = if (isPlaying) 0.42f else 0.15f)),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AnimatedEqualizer(isPlaying = isPlaying, barColor = AuroraCyan)
                     }
                 }
 
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = song.title,
-                        color = CrispWhite,
-                        fontWeight = FontWeight.Bold,
+                        color = SoftWhite,
+                        fontWeight = FontWeight.SemiBold,
                         fontSize = 14.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -577,7 +624,7 @@ fun MiniPlayer(
                     Spacer(modifier = Modifier.height(1.dp))
                     Text(
                         text = song.artist,
-                        color = SlateSecondary,
+                        color = Silver,
                         fontSize = 12.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -585,48 +632,37 @@ fun MiniPlayer(
                 }
 
                 IconButton(
-                    onClick = onSkipPrevious,
+                    onClick = onPlayPause,
                     modifier = Modifier
-                        .size(42.dp)
-                        .testTag("btn_mini_skip_prev")
+                        .size(48.dp)
+                        .testTag("btn_mini_play_pause")
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.SkipPrevious,
-                        contentDescription = "Previous Track",
-                        tint = CrispWhite,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .shadow(10.dp, CircleShape, ambientColor = AuroraCyan, spotColor = AuroraCyan)
-                        .clip(CircleShape)
-                        .background(FusionAmbience.GoldMetallicBrush)
-                        .border(1.dp, GoldBright.copy(alpha = 0.7f), CircleShape)
-                        .bouncyClick(pressedScale = 0.90f) { onPlayPause() }
-                        .testTag("btn_mini_play_pause"),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = MidnightCanvas,
-                        modifier = Modifier.size(22.dp)
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(34.dp)
+                            .clip(CircleShape)
+                            .background(SoftWhite),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = MidnightBlack,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
                 }
 
                 IconButton(
                     onClick = onSkipNext,
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(48.dp)
                         .testTag("btn_mini_skip_next")
                 ) {
                     Icon(
                         imageVector = Icons.Default.SkipNext,
                         contentDescription = "Next Track",
-                        tint = CrispWhite,
+                        tint = SoftWhite,
                         modifier = Modifier.size(22.dp)
                     )
                 }
@@ -635,9 +671,9 @@ fun MiniPlayer(
             MiniPlayerProgressRibbon(
                 positionFlow = positionFlow,
                 durationFlow = durationFlow,
-                fallbackDurationMs = song.durationMs
+                fallbackDurationMs = song.durationMs,
+                theme = theme
             )
-            Spacer(modifier = Modifier.height(2.dp))
         }
     }
 }
@@ -646,7 +682,8 @@ fun MiniPlayer(
 private fun MiniPlayerProgressRibbon(
     positionFlow: StateFlow<Long>?,
     durationFlow: StateFlow<Long>?,
-    fallbackDurationMs: Long
+    fallbackDurationMs: Long,
+    theme: CustomAppTheme
 ) {
     val currentPositionMs by positionFlow?.collectAsState() ?: remember { mutableStateOf(0L) }
     val durationMs by durationFlow?.collectAsState() ?: remember { mutableStateOf(fallbackDurationMs) }
@@ -655,33 +692,28 @@ private fun MiniPlayerProgressRibbon(
     val animatedProgress by animateFloatAsState(
         targetValue = targetProgress,
         animationSpec = tween(durationMillis = 220),
-        label = "mini_pill_progress"
+        label = "mini_progress"
     )
-    val gradientBrush = remember {
-        Brush.horizontalGradient(listOf(AuroraCyan, AuroraViolet, AuroraMagenta))
-    }
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 14.dp)
+            .padding(bottom = 4.dp)
             .height(2.5.dp)
-            .clip(RoundedCornerShape(2.dp))
-            .background(Color(0x1FFFFFFF))
+            .clip(CircleShape)
+            .background(Color(0x26FFFFFF))
     ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth(animatedProgress)
                 .height(2.5.dp)
-                .clip(RoundedCornerShape(2.dp))
-                .background(gradientBrush)
+                .clip(CircleShape)
+                .background(theme.primaryColor)
         )
     }
 }
 
-/**
- * Legacy helper preserved for secondary sheets and cards
- */
 @Composable
 fun SpotifyQuickPickCard(
     title: String,
@@ -690,72 +722,62 @@ fun SpotifyQuickPickCard(
     modifier: Modifier = Modifier,
     isLikedCard: Boolean = false
 ) {
-    Card(
+    val theme = LocalAppCustomTheme.current
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .height(58.dp)
-            .clip(RoundedCornerShape(12.dp))
-            .clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.dp, FrostedGlassBorder),
-        colors = CardDefaults.cardColors(containerColor = FrostedGlassSurface)
+            .clip(RoundedCornerShape(14.dp))
+            .background(theme.cardBackground)
+            .border(0.7.dp, WhiteHighlightSoft, RoundedCornerShape(14.dp))
+            .bouncyClick { onClick() },
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically
+        Box(
+            modifier = Modifier
+                .size(58.dp)
+                .background(if (isLikedCard) GraphiteElevated else theme.elevatedBackground),
+            contentAlignment = Alignment.Center
         ) {
-            Box(
-                modifier = Modifier
-                    .size(58.dp)
-                    .background(
-                        if (isLikedCard) Brush.linearGradient(listOf(AuroraViolet, AuroraMagenta))
-                        else Brush.linearGradient(listOf(MidnightElevated, FrostedGlassSurface))
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                if (isLikedCard) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
-                        contentDescription = "Liked Songs",
-                        tint = Color.White,
-                        modifier = Modifier.size(22.dp)
-                    )
-                } else if (coverUrl.isNotBlank()) {
-                    AsyncImage(
-                        model = coverUrl,
-                        contentDescription = title,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
-                } else {
-                    Icon(
-                        imageVector = Icons.Default.MusicNote,
-                        contentDescription = null,
-                        tint = SlateMuted
-                    )
-                }
+            if (isLikedCard) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = "Liked Songs",
+                    tint = SoftWhite,
+                    modifier = Modifier.size(22.dp)
+                )
+            } else if (coverUrl.isNotBlank()) {
+                AsyncImage(
+                    model = coverUrl,
+                    contentDescription = title,
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    imageVector = Icons.Default.MusicNote,
+                    contentDescription = null,
+                    tint = MutedGrey
+                )
             }
-
-            Spacer(modifier = Modifier.width(10.dp))
-
-            Text(
-                text = title,
-                color = CrispWhite,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 13.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(end = 8.dp)
-            )
         }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Text(
+            text = title,
+            color = SoftWhite,
+            fontWeight = FontWeight.Medium,
+            fontSize = 13.sp,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier
+                .weight(1f)
+                .padding(end = 8.dp)
+        )
     }
 }
 
-/**
- * Frosted Media Card
- */
 @Composable
 fun SpotifyMediaCard(
     title: String,
@@ -765,18 +787,19 @@ fun SpotifyMediaCard(
     modifier: Modifier = Modifier,
     isCircular: Boolean = false
 ) {
-    val shape = if (isCircular) CircleShape else RoundedCornerShape(16.dp)
+    val theme = LocalAppCustomTheme.current
+    val shape = if (isCircular) CircleShape else RoundedCornerShape(14.dp)
     Column(
         modifier = modifier
-            .width(148.dp)
+            .width(150.dp)
             .bouncyClick { onClick() }
     ) {
         Box(
             modifier = Modifier
-                .size(148.dp)
+                .size(150.dp)
                 .clip(shape)
-                .border(1.dp, FrostedGlassBorder, shape)
-                .background(FrostedGlassSurface),
+                .background(theme.cardBackground)
+                .border(0.7.dp, WhiteHighlightSoft, shape),
             contentAlignment = Alignment.Center
         ) {
             if (coverUrl.isNotBlank()) {
@@ -790,8 +813,8 @@ fun SpotifyMediaCard(
                 Icon(
                     imageVector = Icons.Default.MusicNote,
                     contentDescription = null,
-                    tint = SlateMuted,
-                    modifier = Modifier.size(44.dp)
+                    tint = MutedGrey,
+                    modifier = Modifier.size(40.dp)
                 )
             }
         }
@@ -800,7 +823,7 @@ fun SpotifyMediaCard(
 
         Text(
             text = title,
-            color = CrispWhite,
+            color = SoftWhite,
             fontWeight = FontWeight.SemiBold,
             fontSize = 14.sp,
             maxLines = 1,
@@ -809,7 +832,7 @@ fun SpotifyMediaCard(
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = subtitle,
-            color = SlateSecondary,
+            color = Silver,
             fontSize = 12.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -818,7 +841,7 @@ fun SpotifyMediaCard(
 }
 
 /**
- * iOS Bento Category Tile with tilted 3D mini album thumbnail tucked into the top-right corner.
+ * Editorial monochrome artwork-driven category card (zero colorful sticker backgrounds).
  */
 @Composable
 fun SpotifyBrowseTile(
@@ -827,69 +850,66 @@ fun SpotifyBrowseTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     secondaryColorHex: Long? = null,
-    artworkUrl: String = ""
+    artworkUrl: String = "",
+    subtitle: String = "Explore"
 ) {
-    val startColor = Color(colorHex)
-    val endColor = if (secondaryColorHex != null) Color(secondaryColorHex) else startColor.copy(alpha = 0.45f)
-
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .height(106.dp)
-            .clip(RoundedCornerShape(20.dp))
-            .background(
-                Brush.linearGradient(
-                    colors = listOf(startColor, endColor, Color(0xFF141626))
-                )
-            )
-            .border(
-                width = 1.dp,
-                brush = Brush.verticalGradient(listOf(Color(0x45FFFFFF), FrostedGlassBorder)),
-                shape = RoundedCornerShape(20.dp)
-            )
+            .height(98.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(Graphite)
+            .border(0.8.dp, WhiteHighlightSoft, RoundedCornerShape(16.dp))
             .bouncyClick { onClick() }
-            .padding(14.dp)
     ) {
-        // Tilted 3D Mini Album Thumbnail tucked into the top-right corner (no offscreen shadow clipping during scroll)
-        Box(
-            modifier = Modifier
-                .align(Alignment.TopEnd)
-                .offset(x = 8.dp, y = (-4).dp)
-                .size(56.dp)
-                .rotate(16f)
-                .clip(RoundedCornerShape(10.dp))
-                .border(1.2.dp, Color(0x66FFFFFF), RoundedCornerShape(10.dp))
-                .background(FrostedGlassSurface),
-            contentAlignment = Alignment.Center
-        ) {
-            if (artworkUrl.isNotBlank()) {
-                AsyncImage(
-                    model = artworkUrl,
-                    contentDescription = null,
-                    modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.Crop
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Default.MusicNote,
-                    contentDescription = null,
-                    tint = Color.White,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
+        if (artworkUrl.isNotBlank()) {
+            AsyncImage(
+                model = artworkUrl,
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                alpha = 0.54f
+            )
         }
 
-        Text(
-            text = title,
-            color = Color.White,
-            fontWeight = FontWeight.ExtraBold,
-            fontSize = 18.sp,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
+        Box(
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(end = 52.dp)
+                .fillMaxSize()
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            MidnightBlack.copy(alpha = 0.92f),
+                            MidnightBlack.copy(alpha = 0.62f),
+                            Color(0x33171A21)
+                        )
+                    )
+                )
         )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(horizontal = 16.dp)
+        ) {
+            Text(
+                text = title,
+                color = SoftWhite,
+                fontFamily = DisplayFontFamily,
+                fontWeight = FontWeight.Bold,
+                fontSize = 17.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = subtitle,
+                color = Silver,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
     }
 }
 

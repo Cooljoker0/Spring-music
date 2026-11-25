@@ -3,6 +3,7 @@ package com.example.ui.components
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,28 +22,22 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,29 +49,23 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.data.model.SongLyrics
-import com.example.ui.theme.SpotifyCard
-import com.example.ui.theme.SpotifyGreen
-import com.example.ui.theme.SpotifyPitchBlack
-import com.example.ui.theme.SpotifyTextPrimary
-import com.example.ui.theme.SpotifyTextSecondary
+import com.example.ui.theme.BodyFontFamily
+import com.example.ui.theme.DarkGlass
+import com.example.ui.theme.DisplayFontFamily
+import com.example.ui.theme.LocalAppCustomTheme
+import com.example.ui.theme.MutedGrey
+import com.example.ui.theme.Silver
+import com.example.ui.theme.SoftWhite
+import com.example.ui.theme.WhiteHighlight
 import kotlinx.coroutines.launch
 
-/**
- * Spotify-Style Karaoke Synchronized Lyrics Component.
- * Supports:
- * - Live real-time lyric line highlighting with smooth color transitions
- * - Interactive tap-to-seek directly to the line timestamp
- * - Automatic smooth scrolling keeping current line centered
- * - Plain lyrics fallback
- * - Instrumental indicator
- * - Loading & error retry states
- */
 @Composable
 fun LyricsView(
     lyrics: SongLyrics?,
     isLoading: Boolean,
     currentPositionMs: Long,
-    primaryColor: Color = SpotifyGreen,
+    primaryColor: Color = SoftWhite,
+    fadeColor: Color = LocalAppCustomTheme.current.canvasBackground,
     onSeekTo: (Long) -> Unit,
     onRetry: () -> Unit,
     onClose: (() -> Unit)? = null,
@@ -83,7 +73,6 @@ fun LyricsView(
 ) {
     val listState = rememberLazyListState()
     val coroutineScope = rememberCoroutineScope()
-    var userIsScrolling by remember { mutableStateOf(false) }
 
     val activeIndex by remember(lyrics, currentPositionMs) {
         derivedStateOf {
@@ -95,7 +84,6 @@ fun LyricsView(
         }
     }
 
-    // Auto-scroll to current lyric when active line changes (unless user touched scroll)
     LaunchedEffect(activeIndex) {
         if (activeIndex >= 0 && lyrics?.hasSynced == true && !listState.isScrollInProgress) {
             val targetScroll = (activeIndex - 2).coerceAtLeast(0)
@@ -118,14 +106,14 @@ fun LyricsView(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(36.dp),
-                        color = primaryColor,
-                        strokeWidth = 3.dp
+                        modifier = Modifier.size(34.dp),
+                        color = SoftWhite,
+                        strokeWidth = 2.5.dp
                     )
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                     Text(
                         text = "Loading lyrics...",
-                        color = SpotifyTextSecondary,
+                        color = Silver,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Medium
                     )
@@ -143,47 +131,51 @@ fun LyricsView(
                     Icon(
                         imageVector = Icons.Default.Mic,
                         contentDescription = null,
-                        tint = SpotifyTextSecondary.copy(alpha = 0.5f),
-                        modifier = Modifier.size(48.dp)
+                        tint = MutedGrey,
+                        modifier = Modifier.size(44.dp)
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     Text(
-                        text = "Couldn't find lyrics for this song",
-                        color = SpotifyTextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold,
+                        text = "No lyrics found for this track",
+                        fontFamily = DisplayFontFamily,
+                        color = SoftWhite,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
                         textAlign = TextAlign.Center
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Lyrics might not be available or published yet.",
-                        color = SpotifyTextSecondary,
+                        text = "Synced lyrics aren't available yet.",
+                        color = Silver,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center
                     )
                     Spacer(modifier = Modifier.height(16.dp))
                     Surface(
                         onClick = onRetry,
-                        shape = RoundedCornerShape(20.dp),
-                        color = SpotifyCard,
-                        modifier = Modifier.testTag("btn_retry_lyrics")
+                        shape = RoundedCornerShape(50),
+                        color = DarkGlass,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .border(0.8.dp, WhiteHighlight, RoundedCornerShape(50))
+                            .testTag("btn_retry_lyrics")
                     ) {
                         Row(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                            modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = null,
-                                tint = primaryColor,
+                                tint = SoftWhite,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
                                 text = "Retry",
-                                color = SpotifyTextPrimary,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                color = SoftWhite,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
@@ -199,33 +191,33 @@ fun LyricsView(
                     Icon(
                         imageVector = Icons.Default.MusicNote,
                         contentDescription = null,
-                        tint = primaryColor,
-                        modifier = Modifier.size(54.dp)
+                        tint = SoftWhite,
+                        modifier = Modifier.size(48.dp)
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     Text(
-                        text = "This song is an instrumental",
-                        color = SpotifyTextPrimary,
+                        text = "Instrumental",
+                        fontFamily = DisplayFontFamily,
+                        color = SoftWhite,
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = "Enjoy the melody 🎵",
-                        color = SpotifyTextSecondary,
+                        text = "This track has no vocals",
+                        color = Silver,
                         fontSize = 13.sp
                     )
                 }
             }
 
             lyrics.hasSynced -> {
-                // Synchronized Live Karaoke View
                 LazyColumn(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
                         .testTag("synced_lyrics_list"),
-                    contentPadding = PaddingValues(top = 40.dp, bottom = 120.dp),
+                    contentPadding = PaddingValues(top = 32.dp, bottom = 96.dp),
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     itemsIndexed(lyrics.syncedLyrics) { index, line ->
@@ -234,31 +226,32 @@ fun LyricsView(
 
                         val textColor by animateColorAsState(
                             targetValue = when {
-                                isActive -> Color.White
-                                isPast -> Color(0xB3FFFFFF)
-                                else -> Color(0x40FFFFFF)
+                                isActive -> SoftWhite
+                                isPast -> Silver.copy(alpha = 0.72f)
+                                else -> MutedGrey.copy(alpha = 0.56f)
                             },
-                            animationSpec = tween(durationMillis = 250),
+                            animationSpec = tween(durationMillis = 240),
                             label = "lyric_color"
                         )
 
-                        val textSize = if (isActive) 23.sp else 18.sp
-                        val fontWeight = if (isActive) FontWeight.ExtraBold else FontWeight.Bold
+                        val textSize = if (isActive) 22.sp else 18.sp
+                        val fontWeight = if (isActive) FontWeight.Bold else FontWeight.SemiBold
 
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
+                                .clip(RoundedCornerShape(10.dp))
                                 .clickable { onSeekTo(line.timeMs) }
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = line.text,
+                                fontFamily = if (isActive) DisplayFontFamily else BodyFontFamily,
                                 color = textColor,
                                 fontSize = textSize,
                                 fontWeight = fontWeight,
-                                lineHeight = (textSize.value * 1.35f).sp
+                                lineHeight = (textSize.value * 1.38f).sp
                             )
                         }
                     }
@@ -266,48 +259,46 @@ fun LyricsView(
             }
 
             !lyrics.plainLyrics.isNullOrBlank() -> {
-                // Plain Lyrics View (Static fallback)
                 val scrollState = rememberScrollState()
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .verticalScroll(scrollState)
-                        .padding(horizontal = 20.dp, vertical = 24.dp)
+                        .padding(horizontal = 16.dp, vertical = 24.dp)
                         .testTag("plain_lyrics_text")
                 ) {
                     Text(
                         text = lyrics.plainLyrics,
-                        color = SpotifyTextPrimary,
+                        fontFamily = BodyFontFamily,
+                        color = SoftWhite,
                         fontSize = 17.sp,
-                        lineHeight = 26.sp,
+                        lineHeight = 27.sp,
                         fontWeight = FontWeight.Medium
                     )
                 }
             }
         }
 
-        // Top gradient mask for smooth fade
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(30.dp)
+                .height(24.dp)
                 .align(Alignment.TopCenter)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color(0xCC08090F), Color.Transparent)
+                        listOf(fadeColor.copy(alpha = 0.90f), Color.Transparent)
                     )
                 )
         )
 
-        // Bottom gradient mask for smooth fade
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(40.dp)
+                .height(28.dp)
                 .align(Alignment.BottomCenter)
                 .background(
                     Brush.verticalGradient(
-                        listOf(Color.Transparent, Color(0xCC08090F))
+                        listOf(Color.Transparent, fadeColor.copy(alpha = 0.90f))
                     )
                 )
         )

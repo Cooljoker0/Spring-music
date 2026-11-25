@@ -15,9 +15,9 @@ data class MoodCategory(
     val title: String,
     val description: String,
     val searchTag: String = title,
-    val emoji: String = "🎵",
-    val gradientStart: Long = 0xFF1DB954,
-    val gradientEnd: Long = 0xFF121212
+    val emoji: String = "",
+    val gradientStart: Long = 0xFF23262F,
+    val gradientEnd: Long = 0xFF171A21
 )
 
 data class AudioQuality(

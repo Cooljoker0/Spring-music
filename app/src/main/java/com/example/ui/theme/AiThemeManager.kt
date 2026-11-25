@@ -3,31 +3,41 @@ package com.example.ui.theme
 import android.content.Context
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import java.util.Locale
 
 enum class AppThemePreset(val id: String, val title: String, val subtitle: String) {
-    SPOTIFY_DARK("spotify_dark", "Obsidian Gold", "Luxury smoked obsidian glass with champagne gold & amethyst"),
-    APPLE_LIQUID_GLASS("apple_liquid_glass", "Apple Liquid Glass", "Translucent frosted glass with neon crimson rose"),
-    CUSTOM_AI("custom_ai", "Custom AI Prompt", "Dynamic palette generated from your aesthetic prompt")
+    NOCTURNE_JADE("nocturne_jade", "Midnight Glass", "Pure midnight black with translucent graphite & silver highlights"),
+    APPLE_LIQUID_GLASS("apple_liquid_glass", "Frosted Silver", "Luminous frosted graphite glass with soft white refraction"),
+    OBSIDIAN_GOLD("obsidian_gold", "Obsidian Matte", "Deep matte charcoal with pewter silver accents"),
+    ARCTIC_SAPPHIRE("arctic_sapphire", "Crystal Mist", "Cool abyssal slate with crisp ice-silver glass edges"),
+    CUSTOM_AI("custom_ai", "Custom Glass Finish", "Monochrome Liquid Glass intensity tailored to your preference")
 }
 
 data class CustomAppTheme(
-    val id: String = "spotify_dark",
-    val name: String = "Obsidian Gold",
-    val prompt: String = "Luxury Obsidian Champagne Gold & Velvet Amethyst",
-    val primaryColor: Color = AuroraCyan,
-    val primaryBright: Color = AuroraViolet,
-    val accentColor: Color = AuroraMagenta,
-    val cardBackground: Color = FrostedGlassSurface,
+    val id: String = AppThemePreset.NOCTURNE_JADE.id,
+    val name: String = "Midnight Glass",
+    val prompt: String = "Pure midnight black with translucent graphite & silver highlights",
+    val primaryColor: Color = SoftWhite,
+    val primaryBright: Color = Silver,
+    val accentColor: Color = Silver,
+    val canvasBackground: Color = MidnightBlack,
+    val elevatedBackground: Color = DeepBlack,
+    val cardBackground: Color = Graphite,
+    val glassSurfaceColor: Color = DarkGlass,
     val isGlass: Boolean = true,
-    val glassBorderColor: Color = FrostedGlassBorder,
+    val glassBorderColor: Color = WhiteHighlight,
     val isCustom: Boolean = false
 )
 
 val LocalAppCustomTheme = compositionLocalOf { CustomAppTheme() }
+
+fun onAccentColor(accent: Color, darkFallback: Color = MidnightBlack): Color {
+    return if (accent.luminance() > 0.44f) darkFallback else SoftWhite
+}
 
 object AiThemeManager {
     private const val PREFS_NAME = "spring_theme_prefs"
@@ -37,292 +47,217 @@ object AiThemeManager {
     private const val KEY_ACCENT_HEX = "theme_accent_hex"
     private const val KEY_NAME = "theme_name"
 
-    val SpotifyDarkTheme = CustomAppTheme(
-        id = "spotify_dark",
-        name = "Obsidian Gold",
-        prompt = "Luxury Obsidian Champagne Gold & Velvet Amethyst",
-        primaryColor = AuroraCyan,
-        primaryBright = AuroraViolet,
-        accentColor = AuroraMagenta,
-        cardBackground = FrostedGlassSurface,
+    val MidnightGlassTheme = CustomAppTheme(
+        id = AppThemePreset.NOCTURNE_JADE.id,
+        name = "Midnight Glass",
+        prompt = "Pure midnight black with translucent graphite & silver highlights",
+        primaryColor = SoftWhite,
+        primaryBright = Silver,
+        accentColor = MutedGrey,
+        canvasBackground = MidnightBlack,
+        elevatedBackground = DeepBlack,
+        cardBackground = Graphite,
+        glassSurfaceColor = DarkGlass,
         isGlass = true,
-        glassBorderColor = FrostedGlassBorder,
+        glassBorderColor = WhiteHighlight,
         isCustom = false
     )
 
-    val AppleLiquidGlassTheme = CustomAppTheme(
-        id = "apple_liquid_glass",
-        name = "Apple Liquid Glass",
-        prompt = "Apple Music translucent liquid glass with neon crimson-rose",
-        primaryColor = Color(0xFFFA2D48), // Apple Music Iconic Crimson Rose
-        primaryBright = Color(0xFFFF375F),
-        accentColor = Color(0xFFFC3C44),
-        cardBackground = Color(0x28FFFFFF), // Frosted glass card fill
+    val FrostedSilverTheme = CustomAppTheme(
+        id = AppThemePreset.APPLE_LIQUID_GLASS.id,
+        name = "Frosted Silver",
+        prompt = "Luminous frosted graphite glass with crisp white edge reflections",
+        primaryColor = SoftWhite,
+        primaryBright = Color(0xFFC8CDD8),
+        accentColor = Silver,
+        canvasBackground = Color(0xFF0A0C10),
+        elevatedBackground = Color(0xFF101319),
+        cardBackground = Color(0xFF191D26),
+        glassSurfaceColor = Color(0x85282C38),
         isGlass = true,
-        glassBorderColor = Color(0x44FFFFFF), // Reflective glass border
+        glassBorderColor = Color(0x3BFFFFFF),
         isCustom = false
     )
 
-    private val _currentTheme = MutableStateFlow(SpotifyDarkTheme)
+    val ObsidianMatteTheme = CustomAppTheme(
+        id = AppThemePreset.OBSIDIAN_GOLD.id,
+        name = "Obsidian Matte",
+        prompt = "Deep matte obsidian black with muted pewter contrast",
+        primaryColor = Color(0xFFE8EAEE),
+        primaryBright = Color(0xFFA0A6B2),
+        accentColor = MutedGrey,
+        canvasBackground = Color(0xFF06070A),
+        elevatedBackground = Color(0xFF0C0E13),
+        cardBackground = Color(0xFF14171E),
+        glassSurfaceColor = Color(0x751E212A),
+        isGlass = true,
+        glassBorderColor = Color(0x28FFFFFF),
+        isCustom = false
+    )
+
+    val CrystalMistTheme = CustomAppTheme(
+        id = AppThemePreset.ARCTIC_SAPPHIRE.id,
+        name = "Crystal Mist",
+        prompt = "Abyssal charcoal with translucent cool-silver liquid rim highlights",
+        primaryColor = SoftWhite,
+        primaryBright = Color(0xFFB8C0CE),
+        accentColor = Silver,
+        canvasBackground = Color(0xFF090B11),
+        elevatedBackground = Color(0xFF0F1219),
+        cardBackground = Color(0xFF181C25),
+        glassSurfaceColor = Color(0x80252A36),
+        isGlass = true,
+        glassBorderColor = Color(0x36FFFFFF),
+        isCustom = false
+    )
+
+    // Backward-compatible property names
+    val NocturneJadeTheme: CustomAppTheme get() = MidnightGlassTheme
+    val AppleLiquidGlassTheme: CustomAppTheme get() = FrostedSilverTheme
+    val ObsidianGoldTheme: CustomAppTheme get() = ObsidianMatteTheme
+    val ArcticSapphireTheme: CustomAppTheme get() = CrystalMistTheme
+    val SpotifyDarkTheme: CustomAppTheme get() = MidnightGlassTheme
+
+    val CuratedThemes: List<CustomAppTheme> = listOf(
+        MidnightGlassTheme,
+        FrostedSilverTheme,
+        ObsidianMatteTheme,
+        CrystalMistTheme
+    )
+
+    private val _currentTheme = MutableStateFlow(MidnightGlassTheme)
     val currentTheme: StateFlow<CustomAppTheme> = _currentTheme.asStateFlow()
 
     fun init(context: Context) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val presetId = prefs.getString(KEY_PRESET_ID, AppThemePreset.SPOTIFY_DARK.id)
+        val presetId = prefs.getString(KEY_PRESET_ID, AppThemePreset.NOCTURNE_JADE.id)
 
         when (presetId) {
-            AppThemePreset.APPLE_LIQUID_GLASS.id -> {
-                _currentTheme.value = AppleLiquidGlassTheme
-            }
+            AppThemePreset.APPLE_LIQUID_GLASS.id -> _currentTheme.value = FrostedSilverTheme
+            AppThemePreset.OBSIDIAN_GOLD.id -> _currentTheme.value = ObsidianMatteTheme
+            AppThemePreset.ARCTIC_SAPPHIRE.id -> _currentTheme.value = CrystalMistTheme
             AppThemePreset.CUSTOM_AI.id -> {
                 val prompt = prefs.getString(KEY_THEME_PROMPT, null)
+                val name = prefs.getString(KEY_NAME, null)
                 val primaryHex = prefs.getString(KEY_PRIMARY_HEX, null)
                 val accentHex = prefs.getString(KEY_ACCENT_HEX, null)
-                val name = prefs.getString(KEY_NAME, null)
 
-                if (!primaryHex.isNullOrBlank() && !accentHex.isNullOrBlank()) {
-                    val primary = parseColorSafe(primaryHex, SpotifyGreen)
-                    val accent = parseColorSafe(accentHex, SpotifyGreenBright)
-                    _currentTheme.value = CustomAppTheme(
-                        id = "custom_ai",
-                        name = name ?: "Custom AI Theme",
-                        prompt = prompt ?: "Custom prompt",
+                if (!primaryHex.isNullOrBlank()) {
+                    // Enforce monochrome luminance normalization so restored prefs never leak non-monochrome colors
+                    val primary = toMonochromeTone(parseColorSafe(primaryHex, SoftWhite), minBrightness = 0.88f)
+                    val accent = toMonochromeTone(parseColorSafe(accentHex ?: "", Silver), minBrightness = 0.68f)
+                    _currentTheme.value = MidnightGlassTheme.copy(
+                        id = AppThemePreset.CUSTOM_AI.id,
+                        name = name?.takeIf { it.isNotBlank() } ?: "Custom Glass",
+                        prompt = prompt ?: "Monochrome Liquid Glass",
                         primaryColor = primary,
                         primaryBright = accent,
                         accentColor = accent,
-                        cardBackground = SpotifyCard,
-                        isGlass = false,
                         isCustom = true
                     )
                 } else {
-                    _currentTheme.value = SpotifyDarkTheme
+                    _currentTheme.value = MidnightGlassTheme
                 }
             }
-            else -> {
-                _currentTheme.value = SpotifyDarkTheme
-            }
+            else -> _currentTheme.value = MidnightGlassTheme
         }
     }
 
     fun setPresetTheme(context: Context, preset: AppThemePreset) {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         when (preset) {
-            AppThemePreset.SPOTIFY_DARK -> {
-                _currentTheme.value = SpotifyDarkTheme
+            AppThemePreset.NOCTURNE_JADE -> {
+                _currentTheme.value = MidnightGlassTheme
                 prefs.edit().putString(KEY_PRESET_ID, preset.id).apply()
             }
             AppThemePreset.APPLE_LIQUID_GLASS -> {
-                _currentTheme.value = AppleLiquidGlassTheme
+                _currentTheme.value = FrostedSilverTheme
+                prefs.edit().putString(KEY_PRESET_ID, preset.id).apply()
+            }
+            AppThemePreset.OBSIDIAN_GOLD -> {
+                _currentTheme.value = ObsidianMatteTheme
+                prefs.edit().putString(KEY_PRESET_ID, preset.id).apply()
+            }
+            AppThemePreset.ARCTIC_SAPPHIRE -> {
+                _currentTheme.value = CrystalMistTheme
                 prefs.edit().putString(KEY_PRESET_ID, preset.id).apply()
             }
             AppThemePreset.CUSTOM_AI -> {
-                // If custom exists in prefs, load it; otherwise keep current
-                val primaryHex = prefs.getString(KEY_PRIMARY_HEX, null)
-                if (!primaryHex.isNullOrBlank()) {
-                    init(context)
-                }
+                init(context)
             }
         }
     }
 
     fun applyTheme(context: Context, theme: CustomAppTheme) {
-        _currentTheme.value = theme
+        val safePrimary = toMonochromeTone(theme.primaryColor, minBrightness = 0.88f)
+        val safeBright = toMonochromeTone(theme.primaryBright, minBrightness = 0.68f)
+        val normalized = theme.copy(
+            primaryColor = safePrimary,
+            primaryBright = safeBright,
+            accentColor = safeBright,
+            isGlass = true,
+            glassBorderColor = WhiteHighlight
+        )
+        _currentTheme.value = normalized
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val storedId = when (normalized.id) {
+            AppThemePreset.NOCTURNE_JADE.id,
+            AppThemePreset.APPLE_LIQUID_GLASS.id,
+            AppThemePreset.OBSIDIAN_GOLD.id,
+            AppThemePreset.ARCTIC_SAPPHIRE.id -> normalized.id
+            else -> AppThemePreset.CUSTOM_AI.id
+        }
         prefs.edit()
-            .putString(KEY_PRESET_ID, if (theme.id == "apple_liquid_glass") "apple_liquid_glass" else "custom_ai")
-            .putString(KEY_THEME_PROMPT, theme.prompt)
-            .putString(KEY_PRIMARY_HEX, colorToHex(theme.primaryColor))
-            .putString(KEY_ACCENT_HEX, colorToHex(theme.accentColor))
-            .putString(KEY_NAME, theme.name)
+            .putString(KEY_PRESET_ID, storedId)
+            .putString(KEY_THEME_PROMPT, normalized.prompt)
+            .putString(KEY_PRIMARY_HEX, colorToHex(normalized.primaryColor))
+            .putString(KEY_ACCENT_HEX, colorToHex(normalized.accentColor))
+            .putString(KEY_NAME, normalized.name)
             .apply()
     }
 
     fun resetToDefault(context: Context) {
-        _currentTheme.value = SpotifyDarkTheme
+        _currentTheme.value = MidnightGlassTheme
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         prefs.edit().clear().apply()
     }
 
-    /**
-     * Interprets user prompt with intelligent color mapping and semantic aesthetics
-     */
     fun generateThemeFromPrompt(prompt: String): CustomAppTheme {
         val p = prompt.trim().lowercase(Locale.ROOT)
-
-        // Check for Apple Liquid Glass prompt
-        if (p.contains("apple") || p.contains("liquid glass") || p.contains("ios glass")) {
-            return AppleLiquidGlassTheme
-        }
-
-        // Check for direct hex in prompt
-        val hexRegex = Regex("#([A-Fa-f0-9]{6})")
-        val hexMatches = hexRegex.findAll(prompt).map { it.value }.toList()
-        if (hexMatches.isNotEmpty()) {
-            val primary = parseColorSafe(hexMatches[0], SpotifyGreen)
-            val accent = if (hexMatches.size > 1) parseColorSafe(hexMatches[1], primary) else primary
-            return CustomAppTheme(
-                id = "custom_ai",
-                name = "Custom Hex Theme",
-                prompt = prompt,
-                primaryColor = primary,
-                primaryBright = accent,
-                accentColor = accent,
-                isGlass = p.contains("glass"),
-                glassBorderColor = if (p.contains("glass")) Color(0x40FFFFFF) else Color.Transparent,
-                isCustom = true
-            )
-        }
-
         return when {
-            p.contains("cyberpunk") || p.contains("neon") || (p.contains("cyan") && p.contains("pink")) -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Cyberpunk Neon",
-                    prompt = prompt,
-                    primaryColor = Color(0xFF00F0FF), // Electric Cyan
-                    primaryBright = Color(0xFF38E5FF),
-                    accentColor = Color(0xFFFF007F), // Neon Pink
-                    cardBackground = Color(0xFF1E182A),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
-            p.contains("sunset") || p.contains("synthwave") || p.contains("orange") || p.contains("retro") -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Sunset Synthwave",
-                    prompt = prompt,
-                    primaryColor = Color(0xFFFF6B35), // Vibrant Sunset Orange
-                    primaryBright = Color(0xFFFF8E3C),
-                    accentColor = Color(0xFFFF006E), // Hot Magenta
-                    cardBackground = Color(0xFF24161C),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
-            p.contains("ocean") || p.contains("blue") || p.contains("midnight") || p.contains("sea") || p.contains("aqua") -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Midnight Ocean",
-                    prompt = prompt,
-                    primaryColor = Color(0xFF38BDF8), // Sky / Aqua Blue
-                    primaryBright = Color(0xFF67E8F9),
-                    accentColor = Color(0xFF818CF8), // Electric Indigo
-                    cardBackground = Color(0xFF131D2E),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
-            p.contains("purple") || p.contains("violet") || p.contains("lavender") || p.contains("dream") -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Deep Violet",
-                    prompt = prompt,
-                    primaryColor = Color(0xFFA855F7), // Vivid Violet
-                    primaryBright = Color(0xFFC084FC),
-                    accentColor = Color(0xFFE879F9), // Soft Orchid
-                    cardBackground = Color(0xFF1E172B),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
-            p.contains("emerald") || p.contains("forest") || p.contains("mint") || p.contains("nature") || p.contains("jade") -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Emerald Forest",
-                    prompt = prompt,
-                    primaryColor = Color(0xFF10B981), // Rich Mint Emerald
-                    primaryBright = Color(0xFF34D399),
-                    accentColor = Color(0xFF2DD4BF), // Bright Teal
-                    cardBackground = Color(0xFF14241E),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
-            p.contains("gold") || p.contains("luxury") || p.contains("yellow") || p.contains("champagne") || p.contains("royal") -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Royal Gold",
-                    prompt = prompt,
-                    primaryColor = Color(0xFFFBBF24), // Amber Gold
-                    primaryBright = Color(0xFFFCD34D),
-                    accentColor = Color(0xFFF472B6), // Rose Accent
-                    cardBackground = Color(0xFF251E14),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
-            p.contains("pink") || p.contains("rose") || p.contains("cherry") || p.contains("pastel") || p.contains("barbie") -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Blossom Pink",
-                    prompt = prompt,
-                    primaryColor = Color(0xFFF43F5E), // Rose Pink
-                    primaryBright = Color(0xFFFB7185),
-                    accentColor = Color(0xFFFF70A6),
-                    cardBackground = Color(0xFF27171C),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
-            p.contains("fire") || p.contains("red") || p.contains("crimson") || p.contains("flame") -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Crimson Flame",
-                    prompt = prompt,
-                    primaryColor = Color(0xFFEF4444), // Crimson Red
-                    primaryBright = Color(0xFFF87171),
-                    accentColor = Color(0xFFF97316), // Flame Orange
-                    cardBackground = Color(0xFF241515),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
-            p.contains("matrix") || p.contains("code") || p.contains("terminal") || p.contains("hacker") -> {
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "Matrix Green",
-                    prompt = prompt,
-                    primaryColor = Color(0xFF00FF66), // Phosphor Matrix Green
-                    primaryBright = Color(0xFF66FF99),
-                    accentColor = Color(0xFF00CC44),
-                    cardBackground = Color(0xFF0F1A12),
-                    isGlass = false,
-                    isCustom = true
-                )
-            }
+            p.contains("frosted") || p.contains("silver") || p.contains("apple") || p.contains("liquid glass") ->
+                FrostedSilverTheme.copy(id = AppThemePreset.CUSTOM_AI.id, name = "Frosted Silver", prompt = prompt, isCustom = true)
+            p.contains("obsidian") || p.contains("matte") || p.contains("stealth") || p.contains("black") ->
+                ObsidianMatteTheme.copy(id = AppThemePreset.CUSTOM_AI.id, name = "Obsidian Matte", prompt = prompt, isCustom = true)
+            p.contains("crystal") || p.contains("mist") || p.contains("ice") || p.contains("chrome") ->
+                CrystalMistTheme.copy(id = AppThemePreset.CUSTOM_AI.id, name = "Crystal Mist", prompt = prompt, isCustom = true)
             else -> {
-                val hash = prompt.hashCode()
-                val hue = (Math.abs(hash) % 360).toFloat()
-                val hsvColor = android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.85f, 0.95f))
-                val accentHsvColor = android.graphics.Color.HSVToColor(floatArrayOf((hue + 40f) % 360f, 0.75f, 0.95f))
-
-                CustomAppTheme(
-                    id = "custom_ai",
-                    name = "AI Aesthetic: ${prompt.take(16).replaceFirstChar { it.uppercase() }}",
+                val displayName = prompt.trim().take(22).ifBlank { "Midnight Glass" }
+                    .replaceFirstChar { it.uppercase() }
+                MidnightGlassTheme.copy(
+                    id = AppThemePreset.CUSTOM_AI.id,
+                    name = displayName,
                     prompt = prompt,
-                    primaryColor = Color(hsvColor),
-                    primaryBright = Color(accentHsvColor),
-                    accentColor = Color(accentHsvColor),
-                    cardBackground = SpotifyCard,
-                    isGlass = p.contains("glass"),
-                    glassBorderColor = if (p.contains("glass")) Color(0x40FFFFFF) else Color.Transparent,
                     isCustom = true
                 )
             }
         }
+    }
+
+    private fun toMonochromeTone(color: Color, minBrightness: Float): Color {
+        val lum = (0.299f * color.red + 0.587f * color.green + 0.114f * color.blue)
+            .coerceIn(minBrightness, 0.96f)
+        return Color(lum, lum, (lum + 0.015f).coerceAtMost(0.98f), 1f)
     }
 
     fun parseColorSafe(hex: String, fallback: Color): Color {
         return try {
             val cleanHex = hex.trim().removePrefix("#")
             val colorLong = cleanHex.toLong(16)
-            if (cleanHex.length == 6) {
-                Color(0xFF000000 or colorLong)
-            } else if (cleanHex.length == 8) {
-                Color(colorLong)
-            } else {
-                fallback
+            when (cleanHex.length) {
+                6 -> Color(0xFF000000 or colorLong)
+                8 -> Color(colorLong)
+                else -> fallback
             }
         } catch (_: Exception) {
             fallback

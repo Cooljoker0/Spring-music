@@ -2,65 +2,82 @@ package com.example.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-// Luxury Obsidian Champagne & Imperial Velvet Palette
-val MidnightCanvas = Color(0xFF06060A) // Deepest Velvet Obsidian (Level 0)
-val MidnightElevated = Color(0xFF101119) // Smoked Charcoal (Level 1)
-val FrostedGlassSurface = Color(0xD9171924) // Rich Satin Obsidian Glass (Level 2, 85%)
-val FrostedGlassLight = Color(0xE6222536) // Elevated Satin Glass (Level 3)
-val FrostedGlassBorder = Color(0x36EAD5A8) // Warm Brushed Champagne Rim
-val FrostedGlassHighlight = Color(0x66F7E2AE) // Specular Sunlit Gold Rim
+// Midnight Liquid Glass — Strictly Monochromatic Palette (Zero Green / Zero Neon)
+val MidnightBlack = Color(0xFF08090D)       // Level 0: Primary Backdrop
+val DeepBlack = Color(0xFF0D0F14)           // Level 1: Elevated Sheets & Content Base
+val Graphite = Color(0xFF171A21)            // Level 2: Clean Card & Row Surface
+val GraphiteElevated = Color(0xFF1F232C)    // Level 3: Hover / Interactive Elevated Surface
+val DarkGlass = Color(0x7A23262F)           // rgba(35, 38, 47, 0.48) Translucent Liquid Glass
+val DarkGlassOpaque = Color(0xC2171A21)     // Higher-opacity Frosted Graphite for text contrast
 
-// Signature Luxury Accents
-val AuroraCyan = Color(0xFFE8C57B) // Brushed Champagne Gold (Primary Luxury Accent)
-val GoldBright = Color(0xFFF7E2AE) // Sunlit Champagne Highlight
-val GoldBronze = Color(0xFFB5893D) // Burnished Antique Bronze
-val AuroraViolet = Color(0xFF8B6EFF) // Imperial Amethyst Indigo
-val AuroraMagenta = Color(0xFFE07A96) // Velvet Rose-Copper
-val IosEmerald = Color(0xFF34D399) // Emerald Jewel
-val IosRed = Color(0xFFFB7185) // Velvet Ruby
+val Silver = Color(0xFFAEB4C0)              // Secondary Text / Refined Metal Highlight
+val SoftWhite = Color(0xFFF4F5F7)           // Primary Ink & Active Glass Accent
+val MutedGrey = Color(0xFF858B98)           // Tertiary Metadata & Inactive Icons
 
-// Typography Colors (WCAG 2.2 AA >= 4.5:1 on Obsidian & Satin Surfaces)
-val CrispWhite = Color(0xFFFBF8F2) // Warm Ivory Pearl
-val SlateSecondary = Color(0xFFC4BFB6) // Warm Platinum Silver (~9.1:1 on card)
-val SlateMuted = Color(0xFF97928A) // Refined Muted Platinum (~5.2:1 on card)
+// Liquid Glass Specular Highlights & Refractions
+val WhiteHighlight = Color(0x33FFFFFF)      // rgba(255, 255, 255, 0.20) Primary Rim Reflection
+val WhiteHighlightCrisp = Color(0x4DFFFFFF) // Top Specular Glint
+val WhiteHighlightSoft = Color(0x14FFFFFF)  // Subtle Inner Separator & Hairline
+val GlassShadowTint = Color(0x99000000)     // Natural Depth Shadow
 
-// Harmonized App Theme Aliases (ensures seamless cohesion across all components)
-val SpotifyGreen = AuroraCyan
-val SpotifyGreenBright = Color(0xFFF3D99B)
-val SpotifyGreenDark = Color(0xFFB8924A)
+// Restrained Monochrome-Compatible Status Destructive Tint (No Green Anywhere)
+val DestructiveRose = Color(0xFFE07381)
 
-val SpotifyPitchBlack = MidnightCanvas
-val SpotifyBlack = MidnightCanvas
-val SpotifySurface = MidnightElevated
-val SpotifyCard = FrostedGlassSurface
-val SpotifyCardElevated = Color(0xDB1C1D28)
-val SpotifyMiniPlayer = FrostedGlassSurface
-val SpotifyBorder = FrostedGlassBorder
+// Canonical Mappings & Compatibility Aliases (Strictly Monochromatic)
+val MidnightCanvas = MidnightBlack
+val MidnightElevated = DeepBlack
+val FrostedGlassSurface = Graphite
+val FrostedGlassLight = GraphiteElevated
+val FrostedGlassBorder = WhiteHighlightSoft
+val FrostedGlassHighlight = WhiteHighlight
 
-val SpotifyTextPrimary = CrispWhite
-val SpotifyTextSecondary = SlateSecondary
-val SpotifyTextMuted = SlateMuted
+val CrispWhite = SoftWhite
+val SlateSecondary = Silver
+val SlateMuted = MutedGrey
 
-val SpotifyLikedPurpleStart = AuroraViolet
-val SpotifyLikedPurpleEnd = AuroraMagenta
+// Legacy symbol aliases mapped strictly to monochromatic Midnight Liquid Glass tokens
+val AuroraCyan = SoftWhite
+val GoldBright = Silver
+val GoldBronze = MutedGrey
+val AuroraViolet = Silver
+val AuroraMagenta = Silver
+val IosEmerald = SoftWhite
+val IosRed = DestructiveRose
 
-// Backward Compatibility Aliases
-val DarkBackground = MidnightCanvas
-val DarkSurface = MidnightElevated
-val DarkSurfaceElevated = FrostedGlassSurface
-val DarkSurfaceCard = FrostedGlassSurface
-val DarkSurfaceBorder = FrostedGlassBorder
-val SpringEmerald = AuroraCyan
-val SpringEmeraldLight = Color(0xFFF3D99B)
-val SpringEmeraldDark = SpotifyGreenDark
-val SpringCyan = AuroraCyan
-val SpringCyanLight = Color(0xFFF5DFB0)
-val SpringIndigo = AuroraViolet
-val SpringViolet = AuroraMagenta
-val TextPrimary = CrispWhite
-val TextSecondary = SlateSecondary
-val TextMuted = SlateMuted
-val AccentRose = AuroraMagenta
-val AccentAmber = Color(0xFFF5C469)
-val GlassWhite = Color(0x1AF5E6C8)
-val GlassWhiteBorder = FrostedGlassBorder
+val SpotifyGreen = SoftWhite
+val SpotifyGreenBright = Silver
+val SpotifyGreenDark = GraphiteElevated
+val SpotifyPitchBlack = MidnightBlack
+val SpotifyBlack = MidnightBlack
+val SpotifySurface = DeepBlack
+val SpotifyCard = Graphite
+val SpotifyCardElevated = GraphiteElevated
+val SpotifyMiniPlayer = DarkGlass
+val SpotifyBorder = WhiteHighlight
+
+val SpotifyTextPrimary = SoftWhite
+val SpotifyTextSecondary = Silver
+val SpotifyTextMuted = MutedGrey
+
+val SpotifyLikedPurpleStart = GraphiteElevated
+val SpotifyLikedPurpleEnd = Graphite
+
+val DarkBackground = MidnightBlack
+val DarkSurface = DeepBlack
+val DarkSurfaceElevated = Graphite
+val DarkSurfaceCard = Graphite
+val DarkSurfaceBorder = WhiteHighlightSoft
+val SpringEmerald = SoftWhite
+val SpringEmeraldLight = Silver
+val SpringEmeraldDark = MutedGrey
+val SpringCyan = SoftWhite
+val SpringCyanLight = Silver
+val SpringIndigo = Silver
+val SpringViolet = Silver
+val TextPrimary = SoftWhite
+val TextSecondary = Silver
+val TextMuted = MutedGrey
+val AccentRose = Silver
+val AccentAmber = Silver
+val GlassWhite = WhiteHighlightSoft
+val GlassWhiteBorder = WhiteHighlight

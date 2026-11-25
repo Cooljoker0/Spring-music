@@ -431,13 +431,15 @@ class SpringMediaLibraryService : MediaLibraryService() {
                         items.add(song.toMediaItem(groupTitle = "Recently Played"))
                     }
 
-                    val recSongs = (recsState.discoverWeekly + recsState.sections.flatMap { it.songs })
+                    val recSongs = (recsState.madeForYouMixes.flatMap { it.songs.take(4) } +
+                        recsState.discoverWeekly +
+                        recsState.sections.flatMap { it.songs })
                         .distinctBy { it.id }
                         .filter { s -> homeSongs.none { it.id == s.id } }
                         .take(12)
                     for (song in recSongs) {
                         homeSongs.add(song)
-                        items.add(song.toMediaItem(groupTitle = "Recommended For You"))
+                        items.add(song.toMediaItem(groupTitle = "Made For You"))
                     }
 
                     val chartSlice = charts

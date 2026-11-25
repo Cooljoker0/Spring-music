@@ -90,6 +90,12 @@ class PlayerManager(private val context: Context) {
     private val _isLoadingLyrics = MutableStateFlow(false)
     val isLoadingLyrics: StateFlow<Boolean> = _isLoadingLyrics.asStateFlow()
 
+    private val _autoplayEnabled = MutableStateFlow(audioPrefs.getBoolean("autoplay_enabled", true))
+    val autoplayEnabled: StateFlow<Boolean> = _autoplayEnabled.asStateFlow()
+
+    private val _autoplayStatusLabel = MutableStateFlow<String?>(null)
+    val autoplayStatusLabel: StateFlow<String?> = _autoplayStatusLabel.asStateFlow()
+
     private var mediaController: MediaController? = null
     private var listenedPlayer: Player? = null
     private var playJob: Job? = null
@@ -97,6 +103,8 @@ class PlayerManager(private val context: Context) {
     private var sleepTimerJob: Job? = null
     private var lyricsJob: Job? = null
     private var similarSongsJob: Job? = null
+    private var autoplayJob: Job? = null
+    private var isFetchingAutoplay = false
     private var lastErrorTimestamp = 0L
     private var lastHandledErrorTimestamp = 0L
     private var lastHandledSongId: String? = null
@@ -127,6 +135,14 @@ class PlayerManager(private val context: Context) {
                 consecutiveErrors = 0
                 if (active.playbackParameters.speed != 1.0f || active.playbackParameters.pitch != 1.0f) {
                     active.playbackParameters = PlaybackParameters(1.0f, 1.0f)
+                }
+            } else if (playbackState == Player.STATE_ENDED &&
+                _autoplayEnabled.value &&
+                _repeatMode.value == Player.REPEAT_MODE_OFF
+            ) {
+                val seed = _currentSong.value ?: lastActiveSong
+                if (seed != null) {
+                    appendAutoplayAndContinue(seed, autoStartIfEnded = true)
                 }
             }
         }
@@ -169,6 +185,7 @@ class PlayerManager(private val context: Context) {
                     songPlayStartTimeMs = System.currentTimeMillis()
                     recordSongPlayed(match, 0L, isCompleted = false, isSkipped = false)
                     scheduleSimilarSongs(match)
+                    prefetchAutoplayIfNearEnd(match)
                 }
                 _currentSong.value = match
                 lastActiveSong = match
@@ -473,7 +490,7 @@ class PlayerManager(private val context: Context) {
         }
     }
 
-    fun playSong(song: Song, newQueue: List<Song> = listOf(song)) {
+    fun playSong(song: Song, newQueue: List<Song> = listOf(song), radioLabel: String? = null) {
         val baseQueue = if (newQueue.contains(song)) newQueue else listOf(song) + newQueue
 
         // Update UI state immediately with clicked track and reset progress/offset cleanly
@@ -483,6 +500,7 @@ class PlayerManager(private val context: Context) {
         _durationMs.value = song.durationMs.coerceAtLeast(0L)
         _currentSong.value = song
         _queue.value = baseQueue
+        _autoplayStatusLabel.value = radioLabel
         lastStartedTrackId = null
         loadLyricsForSong(song)
 
@@ -545,7 +563,103 @@ class PlayerManager(private val context: Context) {
                     songPlayStartTimeMs = System.currentTimeMillis()
                     recordSongPlayed(targetSong, 0L, isCompleted = false, isSkipped = false)
                     scheduleSimilarSongs(targetSong)
+                    prefetchAutoplayIfNearEnd(targetSong)
                 }
+            }
+        }
+    }
+
+    /**
+     * Generates and plays a Spotify-style Song Radio queue seeded on [seedSong].
+     */
+    fun startSongRadio(seedSong: Song) {
+        showToast("Starting Song Radio for ${seedSong.title}...")
+        autoplayJob?.cancel()
+        autoplayJob = scope.launch {
+            val repo = (context.applicationContext as? SpringApplication)?.repository
+            val radioSongs = withContext(Dispatchers.IO) {
+                repo?.buildTrackRadio(seedSong) ?: listOf(seedSong)
+            }
+            val finalQueue = if (radioSongs.isNotEmpty()) radioSongs else listOf(seedSong)
+            playSong(
+                song = finalQueue.first(),
+                newQueue = finalQueue,
+                radioLabel = "Song Radio • ${seedSong.title}"
+            )
+        }
+    }
+
+    fun setAutoplayEnabled(enabled: Boolean) {
+        _autoplayEnabled.value = enabled
+        audioPrefs.edit().putBoolean("autoplay_enabled", enabled).apply()
+        if (enabled) {
+            _currentSong.value?.let { prefetchAutoplayIfNearEnd(it) }
+        }
+    }
+
+    private fun prefetchAutoplayIfNearEnd(currentTrack: Song) {
+        if (!_autoplayEnabled.value || _repeatMode.value != Player.REPEAT_MODE_OFF) return
+        val q = _queue.value
+        val idx = q.indexOfFirst { it.id == currentTrack.id }
+        if (idx >= 0 && idx >= q.size - 2) {
+            appendAutoplayAndContinue(currentTrack, autoStartIfEnded = false)
+        }
+    }
+
+    private fun appendAutoplayAndContinue(seedSong: Song, autoStartIfEnded: Boolean) {
+        if (isFetchingAutoplay) return
+        isFetchingAutoplay = true
+        autoplayJob?.cancel()
+        autoplayJob = scope.launch {
+            try {
+                val repo = (context.applicationContext as? SpringApplication)?.repository
+                val currentQueue = _queue.value
+                val excludeIds = currentQueue.map { it.id }.toSet()
+                val recommended = withContext(Dispatchers.IO) {
+                    repo?.getAutoplayTracks(seedSong, excludeIds) ?: emptyList()
+                }
+                if (recommended.isNotEmpty()) {
+                    val preparedAdditions = withContext(Dispatchers.Default) {
+                        recommended.map { s ->
+                            val qSong = applyPreferredQuality(s)
+                            if (qSong.effectivePlayableUri.isBlank()) {
+                                JukeboxClient.createJukeboxFallbackSong(qSong, context = context)
+                            } else {
+                                qSong
+                            }
+                        }
+                    }
+                    val mergedQueue = (_queue.value + preparedAdditions).distinctBy { it.id }
+                    val trulyAdded = mergedQueue.drop(_queue.value.size)
+                    if (trulyAdded.isNotEmpty()) {
+                        _queue.value = mergedQueue
+                        _autoplayStatusLabel.value = "Autoplay • Similar to ${seedSong.title}"
+                        val player = getActivePlayer()
+                        if (player != null) {
+                            val newMediaItems = withContext(Dispatchers.Default) {
+                                trulyAdded.map { it.toMediaItem() }
+                            }
+                            val wasEnded = player.playbackState == Player.STATE_ENDED
+                            val currentIdx = player.currentMediaItemIndex
+                            player.addMediaItems(newMediaItems)
+                            if (autoStartIfEnded && (wasEnded || !player.isPlaying)) {
+                                val nextIdx = (currentIdx + 1).coerceAtMost(mergedQueue.size - 1)
+                                player.seekTo(nextIdx, 0L)
+                                player.prepare()
+                                player.play()
+                                _isPlaying.value = true
+                                startProgressTracking()
+                            }
+                        }
+                    }
+                } else if (autoStartIfEnded) {
+                    _isPlaying.value = false
+                    progressJob?.cancel()
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("PlayerManager", "Autoplay continuation failed: ${e.message}")
+            } finally {
+                isFetchingAutoplay = false
             }
         }
     }
@@ -624,9 +738,14 @@ class PlayerManager(private val context: Context) {
             }
             player.play()
         } else {
-            val q = _queue.value
-            if (q.isNotEmpty()) {
-                playSong(q.first(), q)
+            val current = _currentSong.value
+            if (_autoplayEnabled.value && _repeatMode.value == Player.REPEAT_MODE_OFF && current != null) {
+                appendAutoplayAndContinue(current, autoStartIfEnded = true)
+            } else {
+                val q = _queue.value
+                if (q.isNotEmpty()) {
+                    playSong(q.first(), q)
+                }
             }
         }
     }
@@ -663,6 +782,138 @@ class PlayerManager(private val context: Context) {
         }
         _repeatMode.value = next
         getActivePlayer()?.repeatMode = next
+    }
+
+    private fun prepareSongForPlayback(song: Song): Song {
+        val preferred = applyPreferredQuality(song)
+        return if (preferred.effectivePlayableUri.isNotBlank()) {
+            preferred
+        } else {
+            JukeboxClient.createJukeboxFallbackSong(preferred, context = context)
+        }
+    }
+
+    fun playNext(song: Song) {
+        val currentQ = _queue.value
+        val curSong = _currentSong.value
+        if (currentQ.isEmpty() || curSong == null) {
+            playSong(song, listOf(song))
+            return
+        }
+        val prepared = prepareSongForPlayback(song)
+        val filtered = currentQ.filterNot { it.id == prepared.id && it.id != curSong.id }
+        val curIdx = filtered.indexOfFirst { it.id == curSong.id }.coerceAtLeast(0)
+        val insertIdx = (curIdx + 1).coerceAtMost(filtered.size)
+        val updated = filtered.toMutableList().apply { add(insertIdx, prepared) }
+        _queue.value = updated
+
+        val player = getActivePlayer()
+        if (player != null) {
+            val existingPlayerIdx = (0 until player.mediaItemCount).firstOrNull {
+                player.getMediaItemAt(it).mediaId == prepared.id && it != player.currentMediaItemIndex
+            }
+            if (existingPlayerIdx != null) {
+                player.removeMediaItem(existingPlayerIdx)
+            }
+            val playerInsertIdx = (player.currentMediaItemIndex + 1).coerceIn(0, player.mediaItemCount)
+            player.addMediaItem(playerInsertIdx, prepared.toMediaItem())
+        }
+        showToast("Playing \"${song.title}\" next")
+    }
+
+    fun addToQueue(song: Song) {
+        val currentQ = _queue.value
+        val curSong = _currentSong.value
+        if (currentQ.isEmpty() || curSong == null) {
+            playSong(song, listOf(song))
+            return
+        }
+        if (currentQ.any { it.id == song.id }) {
+            showToast("\"${song.title}\" is already in the queue")
+            return
+        }
+        val prepared = prepareSongForPlayback(song)
+        _queue.value = currentQ + prepared
+        getActivePlayer()?.addMediaItem(prepared.toMediaItem())
+        showToast("Added \"${song.title}\" to queue")
+    }
+
+    fun moveQueueItem(fromIndex: Int, toIndex: Int) {
+        val currentQ = _queue.value
+        if (fromIndex !in currentQ.indices || toIndex !in currentQ.indices || fromIndex == toIndex) return
+        val mutable = currentQ.toMutableList()
+        val moved = mutable.removeAt(fromIndex)
+        mutable.add(toIndex, moved)
+        _queue.value = mutable
+
+        val player = getActivePlayer()
+        if (player != null &&
+            fromIndex in 0 until player.mediaItemCount &&
+            toIndex in 0 until player.mediaItemCount
+        ) {
+            player.moveMediaItem(fromIndex, toIndex)
+        }
+    }
+
+    fun removeFromQueue(index: Int) {
+        val currentQ = _queue.value
+        if (index !in currentQ.indices) return
+        val removed = currentQ[index]
+        val isRemovingCurrent = _currentSong.value?.id == removed.id
+        val mutable = currentQ.toMutableList().apply { removeAt(index) }
+        _queue.value = mutable
+
+        val player = getActivePlayer()
+        if (player != null && index in 0 until player.mediaItemCount) {
+            player.removeMediaItem(index)
+        }
+
+        if (mutable.isEmpty()) {
+            _currentSong.value = null
+            _isPlaying.value = false
+            _currentPositionMs.value = 0L
+            _durationMs.value = 0L
+            player?.stop()
+        } else if (isRemovingCurrent) {
+            val nextIdx = index.coerceIn(0, mutable.lastIndex)
+            playSong(mutable[nextIdx], mutable)
+        }
+    }
+
+    fun clearUpcomingQueue() {
+        val cur = _currentSong.value
+        val currentQ = _queue.value
+        if (cur == null || currentQ.isEmpty()) {
+            clearQueue()
+            return
+        }
+        val curIdx = currentQ.indexOfFirst { it.id == cur.id }.coerceAtLeast(0)
+        _queue.value = listOf(currentQ[curIdx])
+        val player = getActivePlayer()
+        if (player != null && player.mediaItemCount > 1) {
+            val keepIndex = player.currentMediaItemIndex.coerceIn(0, player.mediaItemCount - 1)
+            for (i in (player.mediaItemCount - 1) downTo 0) {
+                if (i != keepIndex) {
+                    player.removeMediaItem(i)
+                }
+            }
+        }
+        showToast("Cleared upcoming tracks")
+    }
+
+    fun clearQueue() {
+        playJob?.cancel()
+        progressJob?.cancel()
+        _queue.value = emptyList()
+        _currentSong.value = null
+        _isPlaying.value = false
+        _currentPositionMs.value = 0L
+        _durationMs.value = 0L
+        _autoplayStatusLabel.value = null
+        getActivePlayer()?.let {
+            it.stop()
+            it.clearMediaItems()
+        }
     }
 
     fun setAudioQuality(quality: String) {

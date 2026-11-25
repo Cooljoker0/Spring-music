@@ -217,6 +217,80 @@ object JioSaavnDirectEngine {
         }
     }
 
+    /**
+     * Fetches Spotify-style track-to-track recommendations from JioSaavn's reco.getreco endpoint
+     * and enriches with artist/mood matches if fewer than requested tracks are returned.
+     */
+    suspend fun getSongRecommendations(
+        songId: String,
+        title: String = "",
+        artist: String = "",
+        moodTag: String = "Spring Vibes",
+        limit: Int = 20
+    ): List<Song> = withContext(Dispatchers.IO) {
+        val collected = mutableListOf<Song>()
+        val seenIds = mutableSetOf<String>()
+        if (songId.isNotBlank()) seenIds.add(songId)
+
+        // 1. Native JioSaavn recommendation API (reco.getreco)
+        if (songId.isNotBlank() && !songId.startsWith("sp_") && !songId.startsWith("jb_") && !songId.startsWith("preset_")) {
+            val encPid = URLEncoder.encode(songId.trim(), StandardCharsets.UTF_8.toString())
+            val url = "$JIOSAAVN_API_BASE?__call=reco.getreco&_format=json&_marker=0&api_version=4&ctx=web6dot0&pid=$encPid"
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+                    .header("Accept", "application/json")
+                    .build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    if (response.isSuccessful) {
+                        val bodyStr = response.body?.string()?.trim().orEmpty()
+                        val array = when {
+                            bodyStr.startsWith("[") -> JSONArray(bodyStr)
+                            bodyStr.startsWith("{") -> {
+                                val obj = JSONObject(bodyStr)
+                                obj.optJSONArray("results") ?: obj.optJSONArray("list")
+                            }
+                            else -> null
+                        }
+                        if (array != null) {
+                            for (i in 0 until array.length()) {
+                                val item = array.optJSONObject(i) ?: continue
+                                val song = parseSongJson(item, moodTag)
+                                if (song != null && seenIds.add(song.id)) {
+                                    collected.add(song)
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("JioSaavnDirect", "reco.getreco failed for $songId: ${e.message}")
+            }
+        }
+
+        // 2. If needed, query primary artist's catalog for style continuity
+        val primaryArtist = artist.split(",", "&", "feat.", "ft.").firstOrNull()?.trim().orEmpty()
+        if (collected.size < limit && primaryArtist.isNotBlank()) {
+            val artistTracks = searchSongs(primaryArtist, moodTag = moodTag, limit = 14)
+            for (s in artistTracks) {
+                if (seenIds.add(s.id)) collected.add(s)
+            }
+        }
+
+        // 3. Secondary co-artist or title radio search for broader Spotify-like mix variety
+        if (collected.size < limit && (title.isNotBlank() || primaryArtist.isNotBlank())) {
+            val radioQuery = if (primaryArtist.isNotBlank()) "$primaryArtist radio hits" else "$title similar songs"
+            val extra = searchSongs(radioQuery, moodTag = moodTag, limit = 12)
+            for (s in extra) {
+                if (seenIds.add(s.id)) collected.add(s)
+            }
+        }
+
+        collected.take(limit)
+    }
+
     private fun parseSongJson(item: JSONObject, moodTag: String): Song? {
         val id = item.optString("id").ifBlank { return null }
         val rawTitle = item.optString("title").ifBlank { item.optString("song") }

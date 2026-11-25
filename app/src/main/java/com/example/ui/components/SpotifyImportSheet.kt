@@ -1,24 +1,25 @@
 package com.example.ui.components
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -33,19 +34,20 @@ import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +57,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -69,14 +70,19 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.data.model.Playlist
 import com.example.data.repository.MusicRepository
-import com.example.ui.theme.SpotifyBlack
-import com.example.ui.theme.SpotifyCard
-import com.example.ui.theme.SpotifyCardElevated
-import com.example.ui.theme.SpotifyGreen
-import com.example.ui.theme.SpotifyPitchBlack
-import com.example.ui.theme.SpotifyTextMuted
-import com.example.ui.theme.SpotifyTextPrimary
-import com.example.ui.theme.SpotifyTextSecondary
+import com.example.ui.theme.DarkGlass
+import com.example.ui.theme.DeepBlack
+import com.example.ui.theme.DestructiveRose
+import com.example.ui.theme.DisplayFontFamily
+import com.example.ui.theme.Graphite
+import com.example.ui.theme.LocalAppCustomTheme
+import com.example.ui.theme.MidnightBlack
+import com.example.ui.theme.MutedGrey
+import com.example.ui.theme.Silver
+import com.example.ui.theme.SoftWhite
+import com.example.ui.theme.WhiteHighlight
+import com.example.ui.theme.WhiteHighlightSoft
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -91,10 +97,10 @@ fun SpotifyImportSheet(
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val theme = LocalAppCustomTheme.current
 
     val importStatus by repository.importStatus.collectAsState()
 
-    // Unified input state: Handles both playlist name and URL
     var inputQuery by remember { mutableStateOf("") }
     var isSearchingPlaylists by remember { mutableStateOf(false) }
     var searchedPlaylists by remember { mutableStateOf<List<Playlist>>(emptyList()) }
@@ -111,10 +117,10 @@ fun SpotifyImportSheet(
     fun isUrl(text: String): Boolean {
         val trimmed = text.trim()
         return trimmed.startsWith("http://", ignoreCase = true) ||
-                trimmed.startsWith("https://", ignoreCase = true) ||
-                trimmed.contains("spotify.com") ||
-                trimmed.contains("spotify.link") ||
-                trimmed.matches(Regex("^[a-zA-Z0-9]{22}$"))
+            trimmed.startsWith("https://", ignoreCase = true) ||
+            trimmed.contains("spotify.com") ||
+            trimmed.contains("spotify.link") ||
+            trimmed.matches(Regex("^[a-zA-Z0-9]{22}$"))
     }
 
     fun submitQuery(query: String) {
@@ -139,7 +145,6 @@ fun SpotifyImportSheet(
             repository.startBackgroundImport(finalUrl)
             Toast.makeText(context, "Playlist URL import started! Running in background...", Toast.LENGTH_SHORT).show()
         } else {
-            // Search playlist by name
             scope.launch {
                 isSearchingPlaylists = true
                 hasSearched = true
@@ -156,11 +161,10 @@ fun SpotifyImportSheet(
         }
     }
 
-    // Live search as user types: automatically searches after 300ms pause
-    androidx.compose.runtime.LaunchedEffect(inputQuery) {
+    LaunchedEffect(inputQuery) {
         val trimmed = inputQuery.trim()
         if (trimmed.length >= 2 && !isUrl(trimmed)) {
-            kotlinx.coroutines.delay(300)
+            delay(300)
             isSearchingPlaylists = true
             hasSearched = true
             localError = null
@@ -183,77 +187,52 @@ fun SpotifyImportSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = SpotifyBlack,
-        dragHandle = null,
+        containerColor = DeepBlack,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         modifier = Modifier.testTag("spotify_import_sheet")
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 20.dp)
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp)
         ) {
-            // Drag handle pill
-            Box(
-                modifier = Modifier
-                    .width(40.dp)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color(0xFF404040))
-                    .align(Alignment.CenterHorizontally)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(34.dp)
-                            .clip(CircleShape)
-                            .background(SpotifyGreen),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.MusicNote,
-                            contentDescription = "Spring",
-                            tint = Color.Black,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "Import Playlist",
-                            color = SpotifyTextPrimary,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "Search by name or paste any playlist link",
-                            color = SpotifyTextSecondary,
-                            fontSize = 12.sp
-                        )
-                    }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "Import Playlist",
+                        fontFamily = DisplayFontFamily,
+                        color = SoftWhite,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = "Search by name or paste any playlist link",
+                        color = Silver,
+                        fontSize = 12.sp
+                    )
                 }
 
-                IconButton(onClick = onDismiss) {
+                IconButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.size(48.dp)
+                ) {
                     Icon(
                         imageVector = Icons.Default.Close,
                         contentDescription = "Close",
-                        tint = SpotifyTextSecondary
+                        tint = Silver
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // Single Unified Input Box
             OutlinedTextField(
                 value = inputQuery,
                 onValueChange = {
@@ -267,7 +246,7 @@ fun SpotifyImportSheet(
                 placeholder = {
                     Text(
                         text = "Search playlist name or paste link...",
-                        color = SpotifyTextMuted,
+                        color = MutedGrey,
                         fontSize = 13.sp
                     )
                 },
@@ -275,45 +254,51 @@ fun SpotifyImportSheet(
                     Icon(
                         imageVector = if (isUrl(inputQuery)) Icons.Default.ContentPaste else Icons.Default.Search,
                         contentDescription = "Search",
-                        tint = SpotifyGreen,
+                        tint = SoftWhite,
                         modifier = Modifier.size(20.dp)
                     )
                 },
                 trailingIcon = {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         if (inputQuery.isNotBlank()) {
-                            IconButton(onClick = {
-                                inputQuery = ""
-                                searchedPlaylists = emptyList()
-                                hasSearched = false
-                                localError = null
-                            }) {
+                            IconButton(
+                                onClick = {
+                                    inputQuery = ""
+                                    searchedPlaylists = emptyList()
+                                    hasSearched = false
+                                    localError = null
+                                },
+                                modifier = Modifier.size(48.dp)
+                            ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Clear",
-                                    tint = SpotifyTextSecondary,
+                                    tint = Silver,
                                     modifier = Modifier.size(18.dp)
                                 )
                             }
                         }
-                        IconButton(onClick = {
-                            val clip = clipboardManager.getText()?.text?.trim()
-                            if (!clip.isNullOrBlank()) {
-                                inputQuery = clip
-                                localError = null
-                                submitQuery(clip)
-                            } else {
-                                Toast.makeText(
-                                    context,
-                                    "Clipboard is empty. Type a playlist name or use emulator 📋 to paste!",
-                                    Toast.LENGTH_SHORT
-                                ).show()
-                            }
-                        }) {
+                        IconButton(
+                            onClick = {
+                                val clip = clipboardManager.getText()?.text?.trim()
+                                if (!clip.isNullOrBlank()) {
+                                    inputQuery = clip
+                                    localError = null
+                                    submitQuery(clip)
+                                } else {
+                                    Toast.makeText(
+                                        context,
+                                        "Clipboard is empty. Type a playlist name or paste a link.",
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                }
+                            },
+                            modifier = Modifier.size(48.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.ContentPaste,
                                 contentDescription = "Paste from clipboard",
-                                tint = SpotifyGreen
+                                tint = SoftWhite
                             )
                         }
                     }
@@ -321,14 +306,15 @@ fun SpotifyImportSheet(
                 singleLine = true,
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 keyboardActions = KeyboardActions(onSearch = { submitQuery(inputQuery) }),
-                shape = RoundedCornerShape(8.dp),
+                shape = RoundedCornerShape(14.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedContainerColor = SpotifyCardElevated,
-                    unfocusedContainerColor = SpotifyCard,
-                    focusedBorderColor = SpotifyGreen,
-                    unfocusedBorderColor = Color(0xFF383838),
-                    focusedTextColor = SpotifyTextPrimary,
-                    unfocusedTextColor = SpotifyTextPrimary
+                    focusedContainerColor = Graphite,
+                    unfocusedContainerColor = DarkGlass,
+                    focusedBorderColor = WhiteHighlight,
+                    unfocusedBorderColor = WhiteHighlightSoft,
+                    focusedTextColor = SoftWhite,
+                    unfocusedTextColor = SoftWhite,
+                    cursorColor = SoftWhite
                 ),
                 modifier = Modifier
                     .fillMaxWidth()
@@ -337,44 +323,41 @@ fun SpotifyImportSheet(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action Button for URL or Name
             if (isUrl(inputQuery)) {
                 Button(
                     onClick = { submitQuery(inputQuery) },
                     enabled = !isImporting,
-                    colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen),
-                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SoftWhite, contentColor = MidnightBlack),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .height(48.dp)
                         .testTag("btn_import_url")
                 ) {
-                    Text("Import Spotify / Web Link", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                    Text("Import Playlist Link", fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 }
                 Spacer(modifier = Modifier.height(10.dp))
             } else if (inputQuery.isNotBlank() && !hasSearched) {
                 Button(
                     onClick = { submitQuery(inputQuery) },
-                    colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen),
-                    shape = RoundedCornerShape(24.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = SoftWhite, contentColor = MidnightBlack),
+                    shape = RoundedCornerShape(14.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(44.dp)
+                        .height(48.dp)
                         .testTag("btn_search_submit")
                 ) {
                     Icon(
                         imageVector = Icons.Default.Search,
                         contentDescription = null,
-                        tint = Color.Black,
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Search Playlists for \"$inputQuery\"", color = Color.Black, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("Search Playlists for \"$inputQuery\"", fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // Quick Topic Suggestion Chips
             val quickSuggestions = listOf(
                 "Indie India",
                 "Bollywood Butter",
@@ -395,18 +378,20 @@ fun SpotifyImportSheet(
                 items(quickSuggestions) { chipName ->
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(SpotifyCardElevated)
-                            .border(1.dp, Color(0xFF383838), RoundedCornerShape(16.dp))
+                            .heightIn(min = 42.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(DarkGlass)
+                            .border(0.7.dp, WhiteHighlightSoft, RoundedCornerShape(50))
                             .clickable {
                                 inputQuery = chipName
                                 submitQuery(chipName)
                             }
-                            .padding(horizontal = 12.dp, vertical = 7.dp)
+                            .padding(horizontal = 14.dp, vertical = 9.dp),
+                        contentAlignment = Alignment.Center
                     ) {
                         Text(
                             text = chipName,
-                            color = SpotifyTextPrimary,
+                            color = SoftWhite,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Medium
                         )
@@ -414,40 +399,37 @@ fun SpotifyImportSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // Error display
             if (errorMessage != null) {
                 Text(
                     text = errorMessage,
-                    color = Color(0xFFE91429),
+                    color = DestructiveRose,
                     fontSize = 13.sp
                 )
                 Spacer(modifier = Modifier.height(8.dp))
             }
 
-            // Search Loading State
             if (isSearchingPlaylists) {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(vertical = 20.dp),
+                        .padding(vertical = 24.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     CircularProgressIndicator(
-                        color = SpotifyGreen,
-                        strokeWidth = 3.dp,
-                        modifier = Modifier.size(34.dp)
+                        color = SoftWhite,
+                        strokeWidth = 2.5.dp,
+                        modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
                         text = "Searching playlists for \"$inputQuery\"...",
-                        color = SpotifyTextSecondary,
+                        color = Silver,
                         fontSize = 13.sp
                     )
                 }
             } else if (searchedPlaylists.isNotEmpty()) {
-                // Search Results
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -455,27 +437,20 @@ fun SpotifyImportSheet(
                 ) {
                     Text(
                         text = "Matching Playlists (${searchedPlaylists.size})",
-                        color = SpotifyTextPrimary,
-                        fontSize = 14.sp,
+                        fontFamily = DisplayFontFamily,
+                        color = SoftWhite,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "Tap + to import",
-                        color = SpotifyTextMuted,
-                        fontSize = 11.sp
                     )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                searchedPlaylists.forEach { playlist ->
+                searchedPlaylists.forEachIndexed { idx, playlist ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(vertical = 5.dp)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(SpotifyCard)
-                            .padding(8.dp),
+                            .padding(vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -490,62 +465,41 @@ fun SpotifyImportSheet(
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
                                         .size(46.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(SpotifyCardElevated)
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Graphite)
                                 )
                             } else {
                                 Box(
                                     modifier = Modifier
                                         .size(46.dp)
-                                        .clip(RoundedCornerShape(6.dp))
-                                        .background(SpotifyCardElevated),
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Graphite),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
                                         imageVector = Icons.Default.MusicNote,
                                         contentDescription = null,
-                                        tint = SpotifyGreen,
+                                        tint = Silver,
                                         modifier = Modifier.size(22.dp)
                                     )
                                 }
                             }
 
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
 
                             Column(modifier = Modifier.weight(1f)) {
-                                val isSpotify = playlist.id.startsWith("spotify_") ||
-                                        playlist.id.startsWith("sp_") ||
-                                        playlist.subtitle.contains("Spotify", ignoreCase = true)
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    if (isSpotify) {
-                                        Box(
-                                            modifier = Modifier
-                                                .clip(RoundedCornerShape(3.dp))
-                                                .background(SpotifyGreen.copy(alpha = 0.2f))
-                                                .padding(horizontal = 4.dp, vertical = 1.dp)
-                                        ) {
-                                            Text(
-                                                text = "SPOTIFY",
-                                                color = SpotifyGreen,
-                                                fontSize = 9.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                    }
-                                    Text(
-                                        text = playlist.title,
-                                        color = SpotifyTextPrimary,
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                }
+                                Text(
+                                    text = playlist.title,
+                                    color = SoftWhite,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = if (playlist.songCount > 0) "${playlist.songCount} songs • ${playlist.subtitle}" else playlist.subtitle.ifBlank { "Playlist" },
-                                    color = SpotifyTextSecondary,
+                                    color = Silver,
                                     fontSize = 12.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
@@ -553,29 +507,65 @@ fun SpotifyImportSheet(
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(10.dp))
 
                         Button(
                             onClick = {
                                 repository.startBackgroundImportPlaylist(playlist)
                                 Toast.makeText(context, "Importing \"${playlist.title}\" in background...", Toast.LENGTH_SHORT).show()
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen),
-                            shape = RoundedCornerShape(20.dp),
-                            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 14.dp, vertical = 6.dp),
-                            modifier = Modifier.height(34.dp)
+                            colors = ButtonDefaults.buttonColors(containerColor = SoftWhite, contentColor = MidnightBlack),
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 14.dp),
+                            modifier = Modifier.height(48.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Add,
                                 contentDescription = null,
-                                tint = Color.Black,
-                                modifier = Modifier.size(15.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
                                 text = "Import",
-                                color = Color.Black,
-                                fontSize = 12.sp,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                    if (idx < searchedPlaylists.lastIndex) {
+                        HorizontalDivider(color = WhiteHighlightSoft)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(14.dp))
+            } else if (hasSearched) {
+                LiquidGlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = 4.dp
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "No direct playlist matches found for \"$inputQuery\"",
+                            color = Silver,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(10.dp))
+                        Button(
+                            onClick = {
+                                repository.startBackgroundImportByName(inputQuery)
+                                Toast.makeText(context, "Importing \"$inputQuery\" in background...", Toast.LENGTH_SHORT).show()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = SoftWhite, contentColor = MidnightBlack),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier.height(48.dp)
+                        ) {
+                            Text(
+                                text = "Auto-Match Songs for \"$inputQuery\"",
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -583,45 +573,10 @@ fun SpotifyImportSheet(
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
-            } else if (hasSearched) {
-                // Searched with 0 results
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(SpotifyCard)
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Text(
-                        text = "No direct playlist matches found for \"$inputQuery\"",
-                        color = SpotifyTextSecondary,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Button(
-                        onClick = {
-                            repository.startBackgroundImportByName(inputQuery)
-                            Toast.makeText(context, "Importing \"$inputQuery\" in background...", Toast.LENGTH_SHORT).show()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = SpotifyCardElevated),
-                        shape = RoundedCornerShape(20.dp)
-                    ) {
-                        Text(
-                            text = "Auto-Match Songs for \"$inputQuery\"",
-                            color = SpotifyGreen,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(14.dp))
             } else {
-                // Default View: Popular Sample Playlists with 1-Tap Import
                 Text(
-                    text = "Popular Playlists to Import:",
-                    color = SpotifyTextSecondary,
+                    text = "Popular Playlists",
+                    color = Silver,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -636,219 +591,220 @@ fun SpotifyImportSheet(
                     "All Out 2010s" to "https://open.spotify.com/playlist/37i9dQZF1DX5Ejj0EkURtP"
                 )
 
-                samplePlaylists.forEach { (name, url) ->
+                samplePlaylists.forEachIndexed { idx, (name, url) ->
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(6.dp))
+                            .defaultMinSize(minHeight = 54.dp)
+                            .clip(RoundedCornerShape(10.dp))
                             .clickable {
                                 inputQuery = url
                                 submitQuery(url)
                             }
-                            .padding(vertical = 7.dp, horizontal = 4.dp),
+                            .padding(vertical = 10.dp, horizontal = 4.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
-                                    .size(32.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(SpotifyCardElevated),
+                                    .size(38.dp)
+                                    .clip(RoundedCornerShape(10.dp))
+                                    .background(Graphite)
+                                    .border(0.6.dp, WhiteHighlightSoft, RoundedCornerShape(10.dp)),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.MusicNote,
                                     contentDescription = null,
-                                    tint = SpotifyGreen,
-                                    modifier = Modifier.size(16.dp)
+                                    tint = SoftWhite,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
-                            Spacer(modifier = Modifier.width(10.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
                             Text(
                                 text = name,
-                                color = SpotifyTextPrimary,
+                                color = SoftWhite,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Medium
                             )
                         }
 
-                        Text(
-                            text = "Import",
-                            color = SpotifyGreen,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = null,
+                                tint = SoftWhite,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "Import",
+                                color = SoftWhite,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                    if (idx < samplePlaylists.lastIndex) {
+                        HorizontalDivider(color = WhiteHighlightSoft)
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(12.dp))
 
-                // Tip card
-                Card(
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF142419)),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, SpotifyGreen.copy(alpha = 0.25f)),
-                    modifier = Modifier.fillMaxWidth()
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Graphite)
+                        .border(0.6.dp, WhiteHighlightSoft, RoundedCornerShape(12.dp))
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
-                        modifier = Modifier.padding(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = null,
-                            tint = SpotifyGreen,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Type any playlist name, artist name, or paste a Spotify link directly in the box above to import it.",
-                            color = SpotifyTextSecondary,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        tint = Silver,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = "Search any playlist or paste a Spotify URL above to build it in your Library.",
+                        color = Silver,
+                        fontSize = 12.sp,
+                        lineHeight = 16.sp
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
             }
 
-            // Completed / Running Progress Status Card
             if (importStatus.completedPlaylist != null) {
                 val completed = importStatus.completedPlaylist!!
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SpotifyCardElevated)
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                LiquidGlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = 4.dp
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CheckCircle,
-                        contentDescription = null,
-                        tint = SpotifyGreen,
-                        modifier = Modifier.size(36.dp)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Playlist Imported Successfully!",
-                        color = SpotifyTextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        text = "${completed.title} • ${completed.songCount} tracks added to your Library",
-                        color = SpotifyTextSecondary,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Button(
-                        onClick = {
-                            onPlaylistImported(completed)
-                            repository.dismissImportStatus()
-                            onDismiss()
-                        },
-                        colors = ButtonDefaults.buttonColors(containerColor = SpotifyGreen),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text("Open Playlist", color = Color.Black, fontWeight = FontWeight.Bold)
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = null,
+                            tint = SoftWhite,
+                            modifier = Modifier.size(34.dp)
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            text = "Playlist Imported",
+                            fontFamily = DisplayFontFamily,
+                            color = SoftWhite,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 16.sp
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = "${completed.title} • ${completed.songCount} tracks added",
+                            color = Silver,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.height(14.dp))
+                        Button(
+                            onClick = {
+                                onPlaylistImported(completed)
+                                repository.dismissImportStatus()
+                                onDismiss()
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = SoftWhite, contentColor = MidnightBlack),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                        ) {
+                            Text("Open Playlist", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             } else if (isImporting) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(SpotifyCardElevated)
-                        .padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                LiquidGlassSurface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(14.dp),
+                    elevation = 4.dp
                 ) {
-                    Text(
-                        text = "Importing: ${importStatus.playlistName.ifBlank { "Playlist" }}",
-                        color = SpotifyTextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    LinearProgressIndicator(
-                        progress = { progressPercent },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = SpotifyGreen,
-                        trackColor = Color(0xFF383838)
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         Text(
-                            text = if (importStatus.totalTracks > 0) "${importStatus.currentTrack}/${importStatus.totalTracks} songs matched" else "Parsing playlist...",
-                            color = SpotifyGreen,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            text = "Importing ${importStatus.playlistName.ifBlank { "Playlist" }}",
+                            fontFamily = DisplayFontFamily,
+                            color = SoftWhite,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp
                         )
-                        Text(
-                            text = "${(progressPercent * 100).toInt()}%",
-                            color = SpotifyTextSecondary,
-                            fontSize = 12.sp
+                        Spacer(modifier = Modifier.height(10.dp))
+                        LinearProgressIndicator(
+                            progress = { progressPercent },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(5.dp)
+                                .clip(RoundedCornerShape(3.dp)),
+                            color = SoftWhite,
+                            trackColor = Graphite
                         )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (importStatus.totalTracks > 0) "${importStatus.currentTrack}/${importStatus.totalTracks} songs" else "Reading playlist...",
+                                color = SoftWhite,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "${(progressPercent * 100).toInt()}%",
+                                color = Silver,
+                                fontSize = 12.sp
+                            )
+                        }
+
+                        if (importStatus.trackTitle.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = importStatus.trackTitle,
+                                color = Silver,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        OutlinedButton(
+                            onClick = onDismiss,
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, WhiteHighlight),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("btn_close_import_bg")
+                        ) {
+                            Text(
+                                text = "Continue in Background",
+                                color = SoftWhite,
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 13.sp
+                            )
+                        }
                     }
-
-                    if (importStatus.trackTitle.isNotBlank()) {
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = importStatus.trackTitle,
-                            color = SpotifyTextSecondary,
-                            fontSize = 11.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Button(
-                        onClick = onDismiss,
-                        colors = ButtonDefaults.buttonColors(containerColor = SpotifyPitchBlack),
-                        shape = RoundedCornerShape(24.dp),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .testTag("btn_close_import_bg")
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Close,
-                            contentDescription = null,
-                            tint = SpotifyTextPrimary,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "Close & Run in Background",
-                            color = SpotifyTextPrimary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 13.sp
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Import continues in the background; you can keep listening to music.",
-                        color = SpotifyTextMuted,
-                        fontSize = 11.sp
-                    )
                 }
             }
-
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }

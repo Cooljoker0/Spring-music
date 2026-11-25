@@ -9,35 +9,40 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
-private fun createDarkColorScheme(customTheme: CustomAppTheme) = darkColorScheme(
-    primary = customTheme.primaryColor,
-    onPrimary = MidnightCanvas,
-    primaryContainer = customTheme.primaryColor.copy(alpha = 0.22f),
-    onPrimaryContainer = GoldBright,
-    secondary = customTheme.accentColor,
-    onSecondary = CrispWhite,
-    secondaryContainer = FrostedGlassSurface,
-    onSecondaryContainer = customTheme.accentColor,
-    tertiary = AuroraViolet,
-    onTertiary = CrispWhite,
-    background = MidnightCanvas,
-    onBackground = CrispWhite,
-    surface = FrostedGlassSurface,
-    onSurface = CrispWhite,
-    surfaceVariant = FrostedGlassLight,
-    onSurfaceVariant = SlateSecondary,
-    surfaceContainerLowest = MidnightCanvas,
-    surfaceContainerLow = MidnightElevated,
-    surfaceContainer = FrostedGlassSurface,
-    surfaceContainerHigh = FrostedGlassLight,
-    surfaceContainerHighest = Color(0xFF282B3D),
-    outline = FrostedGlassBorder,
-    outlineVariant = Color(0x1EEAD5A8),
-    error = IosRed
-)
+private fun createDarkColorScheme(customTheme: CustomAppTheme): androidx.compose.material3.ColorScheme {
+    val highSurface = lerp(customTheme.cardBackground, Color.White, 0.05f)
+    val highestSurface = lerp(customTheme.cardBackground, Color.White, 0.10f)
+    return darkColorScheme(
+        primary = customTheme.primaryColor,
+        onPrimary = onAccentColor(customTheme.primaryColor, customTheme.canvasBackground),
+        primaryContainer = WhiteHighlightSoft,
+        onPrimaryContainer = SoftWhite,
+        secondary = customTheme.primaryBright,
+        onSecondary = onAccentColor(customTheme.primaryBright, customTheme.canvasBackground),
+        secondaryContainer = customTheme.cardBackground,
+        onSecondaryContainer = SoftWhite,
+        tertiary = customTheme.accentColor,
+        onTertiary = onAccentColor(customTheme.accentColor, customTheme.canvasBackground),
+        background = customTheme.canvasBackground,
+        onBackground = SoftWhite,
+        surface = customTheme.cardBackground,
+        onSurface = SoftWhite,
+        surfaceVariant = highSurface,
+        onSurfaceVariant = Silver,
+        surfaceContainerLowest = customTheme.canvasBackground,
+        surfaceContainerLow = customTheme.elevatedBackground,
+        surfaceContainer = customTheme.cardBackground,
+        surfaceContainerHigh = highSurface,
+        surfaceContainerHighest = highestSurface,
+        outline = customTheme.glassBorderColor,
+        outlineVariant = WhiteHighlightSoft,
+        error = DestructiveRose
+    )
+}
 
 @Composable
 fun MyApplicationTheme(

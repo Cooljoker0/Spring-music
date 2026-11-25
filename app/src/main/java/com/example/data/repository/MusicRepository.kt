@@ -95,6 +95,9 @@ class MusicRepository(
     private val _topChartsState = MutableStateFlow<List<Song>>(emptyList())
     val topChartsState: StateFlow<List<Song>> = _topChartsState.asStateFlow()
 
+    private val _newReleasesState = MutableStateFlow<List<Song>>(emptyList())
+    val newReleasesState: StateFlow<List<Song>> = _newReleasesState.asStateFlow()
+
     fun loadTopChartsIfNeeded() {
         if (_topChartsState.value.isNotEmpty()) return
         repositoryScope.launch {
@@ -106,9 +109,29 @@ class MusicRepository(
             } catch (_: Exception) {
                 emptyList()
             }
-            val combined = (liveCharts + trendingFromRecs).distinctBy { it.id }.take(10)
+            val combined = (liveCharts + trendingFromRecs).distinctBy { it.id }.take(12)
             if (combined.isNotEmpty()) {
                 _topChartsState.value = combined
+            }
+        }
+    }
+
+    fun loadNewReleasesIfNeeded() {
+        if (_newReleasesState.value.isNotEmpty()) return
+        repositoryScope.launch {
+            val liveReleases = try {
+                searchSongs("New Releases Latest Hits 2025", "New Releases")
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val hindiNew = try {
+                searchSongs("Latest Bollywood New Releases", "New Releases")
+            } catch (_: Exception) {
+                emptyList()
+            }
+            val combined = (liveReleases + hindiNew).distinctBy { it.id }.take(16)
+            if (combined.isNotEmpty()) {
+                _newReleasesState.value = combined
             }
         }
     }
@@ -248,6 +271,10 @@ class MusicRepository(
             .firstOrNull { it.id == songId }
             ?.let { return@withContext it }
         recommendationsState.value.discoverWeekly.find { it.id == songId }?.let { return@withContext it }
+        recommendationsState.value.madeForYouMixes.asSequence()
+            .flatMap { it.songs.asSequence() }
+            .firstOrNull { it.id == songId }
+            ?.let { return@withContext it }
         getUserPlaylistsSync().asSequence()
             .flatMap { it.songs.asSequence() }
             .firstOrNull { it.id == songId }
@@ -802,10 +829,84 @@ class MusicRepository(
         Playlist(
             id = id,
             title = title,
-            subtitle = "0 songs",
+            subtitle = if (description.isNotBlank()) description else "0 songs",
             coverUrl = "",
             songCount = 0,
             songs = emptyList()
+        )
+    }
+
+    suspend fun updatePlaylistDetails(
+        playlistId: String,
+        title: String,
+        description: String
+    ): Playlist? = withContext(Dispatchers.IO) {
+        val existing = playlistDao.getPlaylistById(playlistId) ?: return@withContext null
+        val trimmedTitle = title.trim().ifBlank { existing.title }
+        val trimmedDesc = description.trim()
+        val songs = parseSongsJson(existing.songsJson)
+        val updated = existing.copy(
+            title = trimmedTitle,
+            description = trimmedDesc
+        )
+        playlistDao.insertPlaylist(updated)
+        firestoreSyncManager?.savePlaylist(updated)
+        Playlist(
+            id = updated.id,
+            title = updated.title,
+            subtitle = trimmedDesc.ifBlank {
+                if (updated.isSpotifyImport) "Imported Playlist • ${songs.size} songs" else "${songs.size} songs"
+            },
+            coverUrl = updated.coverUrl.ifBlank { songs.firstOrNull()?.coverUrl.orEmpty() },
+            songCount = songs.size,
+            songs = songs
+        )
+    }
+
+    suspend fun addSongToPlaylist(playlistId: String, song: Song): Playlist? = withContext(Dispatchers.IO) {
+        val existing = playlistDao.getPlaylistById(playlistId) ?: return@withContext null
+        val currentSongs = parseSongsJson(existing.songsJson).toMutableList()
+        if (currentSongs.none { it.id == song.id }) {
+            currentSongs.add(song)
+        }
+        val updatedCover = existing.coverUrl.ifBlank {
+            currentSongs.firstOrNull { it.coverUrl.isNotBlank() }?.coverUrl.orEmpty()
+        }
+        val updated = existing.copy(
+            coverUrl = updatedCover,
+            songCount = currentSongs.size,
+            songsJson = serializeSongsJson(currentSongs)
+        )
+        playlistDao.insertPlaylist(updated)
+        firestoreSyncManager?.savePlaylist(updated)
+        Playlist(
+            id = updated.id,
+            title = updated.title,
+            subtitle = if (updated.isSpotifyImport) "Imported Playlist • ${currentSongs.size} songs" else "${currentSongs.size} songs",
+            coverUrl = updatedCover,
+            songCount = currentSongs.size,
+            songs = currentSongs
+        )
+    }
+
+    suspend fun removeSongFromPlaylist(playlistId: String, songId: String): Playlist? = withContext(Dispatchers.IO) {
+        val existing = playlistDao.getPlaylistById(playlistId) ?: return@withContext null
+        val currentSongs = parseSongsJson(existing.songsJson).filterNot { it.id == songId }
+        val updatedCover = currentSongs.firstOrNull { it.coverUrl.isNotBlank() }?.coverUrl ?: existing.coverUrl
+        val updated = existing.copy(
+            coverUrl = updatedCover,
+            songCount = currentSongs.size,
+            songsJson = serializeSongsJson(currentSongs)
+        )
+        playlistDao.insertPlaylist(updated)
+        firestoreSyncManager?.savePlaylist(updated)
+        Playlist(
+            id = updated.id,
+            title = updated.title,
+            subtitle = if (updated.isSpotifyImport) "Imported Playlist • ${currentSongs.size} songs" else "${currentSongs.size} songs",
+            coverUrl = updatedCover,
+            songCount = currentSongs.size,
+            songs = currentSongs
         )
     }
 
@@ -826,6 +927,11 @@ class MusicRepository(
             )
         }
         firestoreSyncManager?.syncLikedSong(song, newFav)
+        if (newFav) {
+            try {
+                recommendationEngine.recordFeedback(song, FeedbackType.LIKE)
+            } catch (_: Exception) {}
+        }
         newFav
     }
 
@@ -898,6 +1004,14 @@ class MusicRepository(
 
     suspend fun getSimilarSongs(song: Song): List<Song> {
         return recommendationEngine.fetchSimilarSongs(song)
+    }
+
+    suspend fun buildTrackRadio(seedSong: Song): List<Song> {
+        return recommendationEngine.buildTrackRadio(seedSong)
+    }
+
+    suspend fun getAutoplayTracks(seedSong: Song, excludeIds: Set<String>): List<Song> {
+        return recommendationEngine.getAutoplayContinuation(seedSong, excludeIds)
     }
 
     fun setPersonalizationEnabled(enabled: Boolean) {

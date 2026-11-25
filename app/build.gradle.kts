@@ -271,10 +271,18 @@ tasks.matching { it.name.startsWith("compile") || it.name.startsWith("assemble")
     dependsOn("verifyAppVersionMetadata")
 }
 
-tasks.register<Copy>("syncRootDebugApk") {
+tasks.register("syncRootDebugApk") {
     group = "build"
     description = "Copies the latest built debug APK to the workspace root."
-    from(layout.buildDirectory.file("outputs/apk/debug/app-debug.apk"))
-    into(rootProject.layout.projectDirectory)
-    onlyIf { layout.buildDirectory.file("outputs/apk/debug/app-debug.apk").get().asFile.exists() }
+    dependsOn("assembleDebug")
+    val sourceApk = layout.buildDirectory.file("outputs/apk/debug/app-debug.apk")
+    val destApk = rootProject.layout.projectDirectory.file("app-debug.apk")
+    inputs.file(sourceApk)
+    outputs.file(destApk)
+    doLast {
+        val src = sourceApk.get().asFile
+        if (src.exists()) {
+            src.copyTo(destApk.asFile, overwrite = true)
+        }
+    }
 }

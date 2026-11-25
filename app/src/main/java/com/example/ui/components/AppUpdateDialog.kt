@@ -12,7 +12,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -20,16 +19,16 @@ import androidx.compose.material.icons.filled.OpenInBrowser
 import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -38,20 +37,24 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.example.ui.theme.SpotifyCard
-import com.example.ui.theme.SpotifyCardElevated
-import com.example.ui.theme.SpotifyGreen
-import com.example.ui.theme.SpotifyTextPrimary
-import com.example.ui.theme.SpotifyTextSecondary
+import com.example.ui.theme.DestructiveRose
+import com.example.ui.theme.DisplayFontFamily
+import com.example.ui.theme.Graphite
+import com.example.ui.theme.MidnightBlack
+import com.example.ui.theme.Silver
+import com.example.ui.theme.SoftWhite
+import com.example.ui.theme.WhiteHighlight
+import com.example.ui.theme.WhiteHighlightSoft
 import com.example.updater.AppUpdateInfo
 import com.example.updater.AppUpdateManager
 
@@ -64,14 +67,13 @@ fun AppUpdateDialog(
     val isDownloading by AppUpdateManager.isDownloading.collectAsState()
     val progress by AppUpdateManager.downloadProgress.collectAsState()
     val statusMessage by AppUpdateManager.statusMessage.collectAsState()
-    val primaryColor = MaterialTheme.colorScheme.primary
 
     val downloadedApk by AppUpdateManager.downloadedApkFile.collectAsState()
     val speedText by AppUpdateManager.downloadSpeedText.collectAsState()
-    val clipboardManager = androidx.compose.ui.platform.LocalClipboardManager.current
+    val clipboardManager = LocalClipboardManager.current
     var copiedLink by remember { mutableStateOf(false) }
 
-    androidx.compose.runtime.LaunchedEffect(updateInfo.versionCode) {
+    LaunchedEffect(updateInfo.versionCode) {
         AppUpdateManager.findExistingDownloadedApk(context, updateInfo.versionCode)
     }
 
@@ -86,22 +88,20 @@ fun AppUpdateDialog(
             dismissOnClickOutside = !updateInfo.isMandatory && !isDownloading
         )
     ) {
-        Card(
+        LiquidGlassSurface(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(8.dp)
                 .testTag("app_update_dialog"),
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = SpotifyCardElevated),
-            border = androidx.compose.foundation.BorderStroke(1.dp, primaryColor.copy(alpha = 0.5f))
+            shape = RoundedCornerShape(22.dp),
+            elevation = 20.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(24.dp),
+                    .padding(22.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Header with close button
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
@@ -109,39 +109,40 @@ fun AppUpdateDialog(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(48.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(primaryColor, primaryColor.copy(alpha = 0.6f))
-                                )
-                            ),
+                            .size(44.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(WhiteHighlightSoft)
+                            .border(0.7.dp, WhiteHighlight, RoundedCornerShape(12.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.SystemUpdate,
                             contentDescription = "Update Available",
-                            tint = Color.Black,
-                            modifier = Modifier.size(26.dp)
+                            tint = SoftWhite,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
 
                     if (!updateInfo.isMandatory && !isDownloading) {
-                        IconButton(onClick = onDismiss) {
+                        IconButton(
+                            onClick = onDismiss,
+                            modifier = Modifier.size(48.dp)
+                        ) {
                             Icon(
                                 imageVector = Icons.Default.Close,
                                 contentDescription = "Close",
-                                tint = SpotifyTextSecondary
+                                tint = Silver
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 Text(
-                    text = "Update Available!",
-                    color = SpotifyTextPrimary,
+                    text = "Update Available",
+                    fontFamily = DisplayFontFamily,
+                    color = SoftWhite,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -150,38 +151,38 @@ fun AppUpdateDialog(
 
                 Text(
                     text = "Spring Music v${updateInfo.versionName} is ready to install",
-                    color = primaryColor,
+                    color = SoftWhite,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.SemiBold
                 )
 
                 Text(
-                    text = "Current installed: v${AppUpdateManager.currentVersionName}",
-                    color = SpotifyTextSecondary,
+                    text = "Current version: v${AppUpdateManager.currentVersionName}",
+                    color = Silver,
                     fontSize = 12.sp
                 )
 
                 if (updateInfo.changelog.isNotBlank()) {
-                    Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(14.dp))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(12.dp))
-                            .background(SpotifyCard)
-                            .border(1.dp, Color(0x22FFFFFF), RoundedCornerShape(12.dp))
+                            .background(Graphite)
+                            .border(0.6.dp, WhiteHighlightSoft, RoundedCornerShape(12.dp))
                             .padding(12.dp)
                     ) {
                         Column {
                             Text(
-                                text = "What's new:",
-                                color = SpotifyTextSecondary,
+                                text = "Release notes",
+                                color = Silver,
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = updateInfo.changelog,
-                                color = SpotifyTextPrimary,
+                                color = SoftWhite,
                                 fontSize = 13.sp,
                                 lineHeight = 18.sp
                             )
@@ -189,9 +190,8 @@ fun AppUpdateDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(18.dp))
 
-                // Download progress bar
                 if (isDownloading) {
                     Column(
                         modifier = Modifier.fillMaxWidth(),
@@ -202,22 +202,22 @@ fun AppUpdateDialog(
                                 progress = { progress ?: 0f },
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(8.dp)
-                                    .clip(RoundedCornerShape(4.dp)),
-                                color = primaryColor,
-                                trackColor = SpotifyCard
+                                    .height(6.dp)
+                                    .clip(RoundedCornerShape(3.dp)),
+                                color = SoftWhite,
+                                trackColor = Graphite
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = "${((progress ?: 0f) * 100).toInt()}% downloaded",
-                                color = SpotifyTextSecondary,
+                                color = Silver,
                                 fontSize = 12.sp
                             )
                             if (speedText != null) {
                                 Spacer(modifier = Modifier.height(2.dp))
                                 Text(
                                     text = speedText!!,
-                                    color = primaryColor,
+                                    color = SoftWhite,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -225,7 +225,7 @@ fun AppUpdateDialog(
                         } else {
                             CircularProgressIndicator(
                                 modifier = Modifier.size(24.dp),
-                                color = primaryColor,
+                                color = SoftWhite,
                                 strokeWidth = 2.dp
                             )
                         }
@@ -234,57 +234,54 @@ fun AppUpdateDialog(
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = statusMessage!!,
-                                color = if (statusMessage!!.startsWith("Error")) Color(0xFFFF5555) else SpotifyTextSecondary,
+                                color = if (statusMessage!!.startsWith("Error")) DestructiveRose else Silver,
                                 fontSize = 11.sp
                             )
                         }
 
-                        // If in-app download has issues, offer immediate browser & system manager fallbacks
                         Spacer(modifier = Modifier.height(12.dp))
                         OutlinedButton(
-                            onClick = {
-                                AppUpdateManager.openInBrowser(context, updateInfo.downloadUrl)
-                            },
+                            onClick = { AppUpdateManager.openInBrowser(context, updateInfo.downloadUrl) },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(40.dp),
-                            shape = RoundedCornerShape(20.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x44FFFFFF))
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, WhiteHighlight)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.OpenInBrowser,
                                 contentDescription = null,
-                                tint = SpotifyTextPrimary,
+                                tint = SoftWhite,
                                 modifier = Modifier.size(16.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "Open in Chrome / Browser",
-                                color = SpotifyTextPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp
+                                text = "Open in Browser",
+                                color = SoftWhite,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
                             )
                         }
                     }
                 } else {
                     if (!statusMessage.isNullOrBlank()) {
                         val isError = statusMessage!!.contains("Error", ignoreCase = true) ||
-                                statusMessage!!.contains("404") ||
-                                statusMessage!!.contains("failed", ignoreCase = true)
+                            statusMessage!!.contains("404") ||
+                            statusMessage!!.contains("failed", ignoreCase = true)
 
                         if (isError) {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(bottom = 14.dp),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = CardDefaults.cardColors(containerColor = Color(0xFF2C1515)),
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFFF5555).copy(alpha = 0.5f))
+                                shape = RoundedCornerShape(10.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFF28161A)),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, DestructiveRose.copy(alpha = 0.5f))
                             ) {
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
                                         text = statusMessage!!,
-                                        color = Color(0xFFFF8888),
+                                        color = DestructiveRose,
                                         fontSize = 12.sp,
                                         lineHeight = 17.sp,
                                         fontWeight = FontWeight.Medium
@@ -294,7 +291,7 @@ fun AppUpdateDialog(
                         } else {
                             Text(
                                 text = statusMessage!!,
-                                color = primaryColor,
+                                color = SoftWhite,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.padding(bottom = 12.dp)
@@ -304,19 +301,16 @@ fun AppUpdateDialog(
 
                     val isDownloadedReady = downloadedApk != null && downloadedApk!!.exists()
 
-                    // Update Action Button (In-App Downloader / Instant Installer)
                     Button(
-                        onClick = {
-                            AppUpdateManager.downloadAndInstall(context, updateInfo)
-                        },
+                        onClick = { AppUpdateManager.downloadAndInstall(context, updateInfo) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(48.dp)
                             .testTag("btn_confirm_update"),
-                        shape = RoundedCornerShape(24.dp),
+                        shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = primaryColor,
-                            contentColor = Color.Black
+                            containerColor = SoftWhite,
+                            contentColor = MidnightBlack
                         )
                     ) {
                         Icon(
@@ -326,7 +320,7 @@ fun AppUpdateDialog(
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = if (isDownloadedReady) "Install Update (Ready)" else "Download & Install Update",
+                            text = if (isDownloadedReady) "Install Update" else "Download & Install",
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp
                         )
@@ -334,28 +328,25 @@ fun AppUpdateDialog(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Secondary: Download via Browser button (Chrome is 100% reliable for Google Drive/GitHub)
                     OutlinedButton(
-                        onClick = {
-                            AppUpdateManager.openInBrowser(context, updateInfo.downloadUrl)
-                        },
+                        onClick = { AppUpdateManager.openInBrowser(context, updateInfo.downloadUrl) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(44.dp)
+                            .height(48.dp)
                             .testTag("btn_browser_update"),
-                        shape = RoundedCornerShape(22.dp),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x44FFFFFF))
+                        shape = RoundedCornerShape(12.dp),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, WhiteHighlight)
                     ) {
                         Icon(
                             imageVector = Icons.Default.OpenInBrowser,
                             contentDescription = null,
-                            tint = SpotifyTextPrimary,
+                            tint = SoftWhite,
                             modifier = Modifier.size(18.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Download via Browser (Chrome)",
-                            color = SpotifyTextPrimary,
+                            text = "Download via Browser",
+                            color = SoftWhite,
                             fontWeight = FontWeight.Medium,
                             fontSize = 13.sp
                         )
@@ -363,25 +354,22 @@ fun AppUpdateDialog(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Third option: System Notification Download Manager & Copy Link
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         OutlinedButton(
-                            onClick = {
-                                AppUpdateManager.downloadWithSystemManager(context, updateInfo)
-                            },
+                            onClick = { AppUpdateManager.downloadWithSystemManager(context, updateInfo) },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp)
+                                .height(48.dp)
                                 .testTag("btn_system_update"),
-                            shape = RoundedCornerShape(20.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FFFFFF))
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, WhiteHighlightSoft)
                         ) {
                             Text(
                                 text = "System DL",
-                                color = SpotifyTextSecondary,
+                                color = Silver,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -389,19 +377,19 @@ fun AppUpdateDialog(
 
                         OutlinedButton(
                             onClick = {
-                                clipboardManager.setText(androidx.compose.ui.text.AnnotatedString(updateInfo.downloadUrl))
+                                clipboardManager.setText(AnnotatedString(updateInfo.downloadUrl))
                                 copiedLink = true
                                 android.widget.Toast.makeText(context, "Download link copied!", android.widget.Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp),
-                            shape = RoundedCornerShape(20.dp),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0x33FFFFFF))
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, WhiteHighlightSoft)
                         ) {
                             Text(
-                                text = if (copiedLink) "✓ Copied" else "Copy Link",
-                                color = if (copiedLink) primaryColor else SpotifyTextSecondary,
+                                text = if (copiedLink) "Copied" else "Copy Link",
+                                color = if (copiedLink) SoftWhite else Silver,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
@@ -414,11 +402,11 @@ fun AppUpdateDialog(
                             onClick = onDismiss,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(38.dp),
-                            shape = RoundedCornerShape(19.dp),
+                                .height(48.dp),
+                            shape = RoundedCornerShape(12.dp),
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = Color.Transparent,
-                                contentColor = SpotifyTextSecondary
+                                contentColor = Silver
                             )
                         ) {
                             Text(text = "Later", fontSize = 13.sp)
